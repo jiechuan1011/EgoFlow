@@ -17,8 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-private val TAB_LABELS = listOf("DeepSeek", "Claude", "OpenAI", "Gemini")
-private val TAB_ICONS = listOf(Icons.Default.Code, Icons.Default.Psychology, Icons.Default.Lightbulb, Icons.Default.Star)
+private val TAB_LABELS = listOf("DeepSeek", "Claude", "OpenAI", "Gemini", "自定义")
+private val TAB_ICONS = listOf(Icons.Default.Code, Icons.Default.Psychology, Icons.Default.Lightbulb, Icons.Default.Star, Icons.Default.AddBox)
+private val PROVIDER_NAMES = listOf("DeepSeek", "Claude", "OpenAI", "Gemini", "自定义")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +36,8 @@ fun SettingsScreen(
     }
 
     val currentConfig = when (uiState.selectedTab) {
-        0 -> uiState.deepSeek; 1 -> uiState.claude; 2 -> uiState.openAi; else -> uiState.gemini
+        0 -> uiState.deepSeek; 1 -> uiState.claude; 2 -> uiState.openAi
+        3 -> uiState.gemini; else -> uiState.custom
     }
 
     Scaffold(
@@ -51,7 +53,6 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 厂商标签
             TabRow(selectedTabIndex = uiState.selectedTab) {
                 TAB_LABELS.forEachIndexed { i, label ->
                     Tab(
@@ -72,7 +73,27 @@ fun SettingsScreen(
             ) {
                 Spacer(Modifier.height(4.dp))
 
-                // API Key 输入
+                // 自定义供应商名称 + 模型名（仅第5个tab）
+                if (uiState.selectedTab == 4) {
+                    OutlinedTextField(
+                        value = uiState.custom.providerName,
+                        onValueChange = { viewModel.updateCustomName(it) },
+                        label = { Text("供应商名称") },
+                        placeholder = { Text("如：硅基流动、Groq...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = uiState.custom.modelName,
+                        onValueChange = { viewModel.updateCustomModel(it) },
+                        label = { Text("模型名称") },
+                        placeholder = { Text("如：gpt-4o-mini、qwen-turbo...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                // API Key
                 OutlinedTextField(
                     value = currentConfig.apiKey,
                     onValueChange = { viewModel.updateApiKey(it) },
@@ -88,7 +109,7 @@ fun SettingsScreen(
                     }
                 )
 
-                // Base URL（折叠面板）
+                // Base URL（折叠）
                 Surface(
                     onClick = { showBaseUrl = !showBaseUrl },
                     shape = MaterialTheme.shapes.small,
@@ -112,6 +133,33 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                }
+
+                HorizontalDivider()
+                Spacer(Modifier.height(4.dp))
+
+                // 用途选择
+                Text("选择用途", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text("日常对话", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PROVIDER_NAMES.forEachIndexed { i, name ->
+                        FilterChip(
+                            selected = uiState.chatProvider == i,
+                            onClick = { viewModel.setChatProvider(i) },
+                            label = { Text(name) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("月度蓝图", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PROVIDER_NAMES.forEachIndexed { i, name ->
+                        FilterChip(
+                            selected = uiState.blueprintProvider == i,
+                            onClick = { viewModel.setBlueprintProvider(i) },
+                            label = { Text(name) }
+                        )
+                    }
                 }
 
                 // 保存提示

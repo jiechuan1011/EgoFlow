@@ -133,6 +133,25 @@ private fun EntriesTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // 每日 AI 自我进化
+        Button(
+            onClick = { viewModel.runDailyEvolution() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            enabled = !uiState.isEvolving
+        ) {
+            if (uiState.isEvolving) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+            }
+            Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(if (uiState.isEvolving) "正在进化分析..." else "每日 AI 自我进化")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // 进化条目列表
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

@@ -12,6 +12,14 @@ object AiConfig {
     var openAiBaseUrl: String = "https://api.openai.com"
     var geminiApiKey: String = ""
     var geminiBaseUrl: String = "https://generativelanguage.googleapis.com"
+    var customApiKey: String = ""
+    var customBaseUrl: String = ""
+    var customModelName: String = ""
+    var customProviderName: String = "自定义"
+
+    // 用途映射: 0=DeepSeek 1=Claude 2=OpenAI 3=Gemini 4=自定义
+    var chatProviderIndex: Int = 0
+    var blueprintProviderIndex: Int = 0
 
     // 模型常量
     const val DEEPSEEK_CHAT_MODEL = "deepseek-chat"

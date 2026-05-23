@@ -6,20 +6,27 @@ import androidx.lifecycle.viewModelScope
 import com.egoflow.app.EgoFlowApp
 import com.egoflow.app.data.entity.EvolutionBacklogEntity
 import com.egoflow.app.data.repository.EvolutionRepository
+import com.egoflow.app.data.repository.TaskRepository
 import com.egoflow.app.scheduler.ElasticSchedulingEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 data class EvolutionUiState(
     val entries: List<EvolutionBacklogEntity> = emptyList(),
     val selectedFilter: String = "ALL", // ALL, USER_PROMPT, AI_DIAGNOSIS
     val configOverrides: Map<String, Any> = emptyMap(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val isEvolving: Boolean = false,
+    val evolveResult: String? = null
 )
 
 class EvolutionCenterViewModel(
     private val evolutionRepository: EvolutionRepository,
-    private val schedulingEngine: ElasticSchedulingEngine
+    private val schedulingEngine: ElasticSchedulingEngine,
+    private val taskRepository: TaskRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EvolutionUiState())
@@ -48,6 +55,54 @@ class EvolutionCenterViewModel(
                     "main_line_threshold_minutes" to config.mainLineThresholdMinutes
                 )
             )
+        }
+    }
+
+    /** 每日 AI 自我进化：分析已完成任务生成诊断条目 */
+    fun runDailyEvolution() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isEvolving = true) }
+            try {
+                val yesterday = System.currentTimeMillis() - 86400_000
+                val doneMinutes = withContext(Dispatchers.IO) {
+                    taskRepository.getCompletedMainLineMinutesSince(yesterday)
+                }
+                val count = doneMinutes / 30 // 大约每30分钟算一个任务
+                if (count > 0) {
+                    evolutionRepository.addEntry(
+                        source = "AI_DIAGNOSIS",
+                        category = "TECH_STACK",
+                        rawContent = "每日自我进化：过去24小时完成了约 ${count} 个任务（${doneMinutes}分钟）。建议：${generateSuggestion(count, doneMinutes)}",
+                        aiRefinedSpec = "自动生成于 ${java.text.SimpleDateFormat("MM月dd日", java.util.Locale.CHINA).format(java.util.Date())}"
+                    )
+                    _uiState.update { it.copy(evolveResult = "已生成 ${count} 个任务的进化分析") }
+                } else {
+                    evolutionRepository.addEntry(
+                        source = "AI_DIAGNOSIS",
+                        category = "UI_UX",
+                        rawContent = "每日自我进化：过去24小时无已完成任务。考虑降低任务门槛或检查排程合理性。",
+                        aiRefinedSpec = "自动生成"
+                    )
+                    _uiState.update { it.copy(evolveResult = "今日无完成任务，已记录诊断") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(evolveResult = "进化分析失败: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isEvolving = false) }
+            }
+        }
+    }
+
+    fun clearEvolveResult() {
+        _uiState.update { it.copy(evolveResult = null) }
+    }
+
+    private fun generateSuggestion(count: Int, minutes: Int): String {
+        return when {
+            minutes >= 480 -> "已完成 ${minutes} 分钟，已达推荐日上限。建议适当休息。"
+            minutes >= 240 -> "高效日！已完成 ${minutes} 分钟。继续保持当前节奏。"
+            minutes >= 120 -> "进度正常（${minutes}分钟）。可考虑增加一个高耗任务。"
+            else -> "今日完成较少（${minutes}分钟）。检查是否有任务被阻塞。"
         }
     }
 
@@ -130,7 +185,8 @@ class EvolutionCenterViewModel(
             val app = EgoFlowApp.instance
             return EvolutionCenterViewModel(
                 evolutionRepository = app.evolutionRepository,
-                schedulingEngine = app.schedulingEngine
+                schedulingEngine = app.schedulingEngine,
+                taskRepository = app.taskRepository
             ) as T
         }
     }

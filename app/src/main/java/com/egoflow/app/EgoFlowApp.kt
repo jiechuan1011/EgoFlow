@@ -76,10 +76,16 @@ class EgoFlowApp : Application() {
                 AiConfig.claudeApiKey = settingsRepository.claudeApiKey.first()
                 AiConfig.openAiApiKey = settingsRepository.openAiApiKey.first()
                 AiConfig.geminiApiKey = settingsRepository.geminiApiKey.first()
+                AiConfig.customApiKey = settingsRepository.customApiKey.first()
                 AiConfig.deepSeekBaseUrl = settingsRepository.deepSeekBaseUrl.first()
                 AiConfig.claudeBaseUrl = settingsRepository.claudeBaseUrl.first()
                 AiConfig.openAiBaseUrl = settingsRepository.openAiBaseUrl.first()
                 AiConfig.geminiBaseUrl = settingsRepository.geminiBaseUrl.first()
+                AiConfig.customBaseUrl = settingsRepository.customBaseUrl.first()
+                AiConfig.customModelName = settingsRepository.customModelName.first()
+                AiConfig.customProviderName = settingsRepository.customProviderName.first()
+                AiConfig.chatProviderIndex = settingsRepository.chatProvider.first()
+                AiConfig.blueprintProviderIndex = settingsRepository.blueprintProvider.first()
                 Log.d("EgoFlowInit", "Settings loaded from DataStore")
             }
 

@@ -11,7 +11,9 @@ import kotlinx.coroutines.launch
 
 data class ProviderConfig(
     val apiKey: String = "",
-    val baseUrl: String = ""
+    val baseUrl: String = "",
+    val modelName: String = "",
+    val providerName: String = ""
 )
 
 data class SettingsUiState(
@@ -20,6 +22,9 @@ data class SettingsUiState(
     val claude: ProviderConfig = ProviderConfig(baseUrl = "https://api.anthropic.com"),
     val openAi: ProviderConfig = ProviderConfig(baseUrl = "https://api.openai.com"),
     val gemini: ProviderConfig = ProviderConfig(baseUrl = "https://generativelanguage.googleapis.com"),
+    val custom: ProviderConfig = ProviderConfig(providerName = "自定义"),
+    val chatProvider: Int = 0,
+    val blueprintProvider: Int = 0,
     val saved: Boolean = false
 )
 
@@ -31,15 +36,22 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        // 监听所有配置 Flow
         listOf(
-            settingsRepository.deepSeekApiKey to { v: String -> _uiState.update { it.copy(deepSeek = it.deepSeek.copy(apiKey = v)) } },
-            settingsRepository.deepSeekBaseUrl to { v: String -> _uiState.update { it.copy(deepSeek = it.deepSeek.copy(baseUrl = v)) } },
-            settingsRepository.claudeApiKey to { v: String -> _uiState.update { it.copy(claude = it.claude.copy(apiKey = v)) } },
-            settingsRepository.claudeBaseUrl to { v: String -> _uiState.update { it.copy(claude = it.claude.copy(baseUrl = v)) } },
-            settingsRepository.openAiApiKey to { v: String -> _uiState.update { it.copy(openAi = it.openAi.copy(apiKey = v)) } },
-            settingsRepository.openAiBaseUrl to { v: String -> _uiState.update { it.copy(openAi = it.openAi.copy(baseUrl = v)) } },
-            settingsRepository.geminiApiKey to { v: String -> _uiState.update { it.copy(gemini = it.gemini.copy(apiKey = v)) } },
-            settingsRepository.geminiBaseUrl to { v: String -> _uiState.update { it.copy(gemini = it.gemini.copy(baseUrl = v)) } }
+            settingsRepository.deepSeekApiKey to { v: String -> copyDeepSeek { it.copy(apiKey = v) } },
+            settingsRepository.deepSeekBaseUrl to { v: String -> copyDeepSeek { it.copy(baseUrl = v) } },
+            settingsRepository.claudeApiKey to { v: String -> copyClaude { it.copy(apiKey = v) } },
+            settingsRepository.claudeBaseUrl to { v: String -> copyClaude { it.copy(baseUrl = v) } },
+            settingsRepository.openAiApiKey to { v: String -> copyOpenAi { it.copy(apiKey = v) } },
+            settingsRepository.openAiBaseUrl to { v: String -> copyOpenAi { it.copy(baseUrl = v) } },
+            settingsRepository.geminiApiKey to { v: String -> copyGemini { it.copy(apiKey = v) } },
+            settingsRepository.geminiBaseUrl to { v: String -> copyGemini { it.copy(baseUrl = v) } },
+            settingsRepository.customApiKey to { v: String -> copyCustom { it.copy(apiKey = v) } },
+            settingsRepository.customBaseUrl to { v: String -> copyCustom { it.copy(baseUrl = v) } },
+            settingsRepository.customModelName to { v: String -> copyCustom { it.copy(modelName = v) } },
+            settingsRepository.customProviderName to { v: String -> copyCustom { it.copy(providerName = v) } },
+            settingsRepository.chatProvider to { v: Int -> _uiState.update { it.copy(chatProvider = v) } },
+            settingsRepository.blueprintProvider to { v: Int -> _uiState.update { it.copy(blueprintProvider = v) } }
         ).forEach { (flow, update) ->
             viewModelScope.launch { flow.collect { update(it) } }
         }
@@ -55,6 +67,7 @@ class SettingsViewModel(
                 1 -> { settingsRepository.saveClaudeKey(key); AiConfig.claudeApiKey = key }
                 2 -> { settingsRepository.saveOpenAiKey(key); AiConfig.openAiApiKey = key }
                 3 -> { settingsRepository.saveGeminiKey(key); AiConfig.geminiApiKey = key }
+                4 -> { settingsRepository.saveCustomKey(key); AiConfig.customApiKey = key }
             }
             _uiState.update { it.copy(saved = true) }
         }
@@ -68,12 +81,57 @@ class SettingsViewModel(
                 1 -> { settingsRepository.saveClaudeUrl(url); AiConfig.claudeBaseUrl = url }
                 2 -> { settingsRepository.saveOpenAiUrl(url); AiConfig.openAiBaseUrl = url }
                 3 -> { settingsRepository.saveGeminiUrl(url); AiConfig.geminiBaseUrl = url }
+                4 -> { settingsRepository.saveCustomUrl(url); AiConfig.customBaseUrl = url }
             }
             _uiState.update { it.copy(saved = true) }
         }
     }
 
+    fun updateCustomModel(model: String) {
+        viewModelScope.launch {
+            settingsRepository.saveCustomModel(model)
+            AiConfig.customModelName = model
+            _uiState.update { it.copy(saved = true) }
+        }
+    }
+
+    fun updateCustomName(name: String) {
+        viewModelScope.launch {
+            settingsRepository.saveCustomName(name)
+            AiConfig.customProviderName = name
+            _uiState.update { it.copy(saved = true) }
+        }
+    }
+
+    fun setChatProvider(index: Int) {
+        viewModelScope.launch {
+            settingsRepository.saveChatProvider(index)
+            AiConfig.chatProviderIndex = index
+            _uiState.update { it.copy(saved = true) }
+        }
+    }
+
+    fun setBlueprintProvider(index: Int) {
+        viewModelScope.launch {
+            settingsRepository.saveBlueprintProvider(index)
+            AiConfig.blueprintProviderIndex = index
+            _uiState.update { it.copy(saved = true) }
+        }
+    }
+
     fun clearSavedFlag() { _uiState.update { it.copy(saved = false) } }
+
+    // 辅助方法
+    private fun copyDeepSeek(fn: ProviderConfig.() -> ProviderConfig) =
+        _uiState.update { it.copy(deepSeek = it.deepSeek.fn()) }
+    private fun copyClaude(fn: ProviderConfig.() -> ProviderConfig) =
+        _uiState.update { it.copy(claude = it.claude.fn()) }
+    private fun copyOpenAi(fn: ProviderConfig.() -> ProviderConfig) =
+        _uiState.update { it.copy(openAi = it.openAi.fn()) }
+    private fun copyGemini(fn: ProviderConfig.() -> ProviderConfig) =
+        _uiState.update { it.copy(gemini = it.gemini.fn()) }
+    private fun copyCustom(fn: ProviderConfig.() -> ProviderConfig) =
+        _uiState.update { it.copy(custom = it.custom.fn()) }
 
     class Factory : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
