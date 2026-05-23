@@ -112,7 +112,8 @@ class EgoFlowApp : Application() {
                 Triple("FEATURE_REQ", "多场景指定不同 AI 模型", "日常对话和月规划应可分别指定不同的 AI 模型（DeepSeek/Claude/OpenAI/Gemini），并支持自定义配置参数。" to null),
                 Triple("FEATURE_REQ", "任务完成勾选与延期", "用户无法确认任务是否完成，缺少打勾确认功能，也无法确认任务能否延期。" to null),
                 Triple("UI_UX", "日程排版不合理", "生成的日程总是从早排到晚，不够合理。考试日程生成后无法确认后续内容是否已生成。" to null),
-                Triple("FEATURE_REQ", "应用内更新推送", "更新推送能力不足，无法在应用内完成更新安装，需手动跳转 GitHub 下载。" to null)
+                Triple("FEATURE_REQ", "应用内更新推送", "更新推送能力不足，无法在应用内完成更新安装，需手动跳转 GitHub 下载。" to null),
+                Triple("FEATURE_REQ", "AI自我进化功能无效", "用户抱怨 AI 自我进化功能没有实际效果，要求实现每天自动更新进化蓝图并推送改进建议。" to null)
             )
 
             seeds.forEach { (category, title, desc) ->
