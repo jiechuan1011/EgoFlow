@@ -7,8 +7,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.egoflow.app.domain.model.CoachMessage
+import com.egoflow.app.domain.model.CoachOption
+import com.egoflow.app.domain.model.CoachOptionsGroup
 import com.egoflow.app.ui.theme.*
 
 /**
@@ -131,6 +132,22 @@ fun ChatCoachScreen(
                 items(uiState.messages) { message ->
                     MessageBubble(message)
                 }
+
+                // 交互式选项卡片
+                if (uiState.pendingOptions != null) {
+                    item {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OptionsGroupCard(
+                            optionsGroup = uiState.pendingOptions!!,
+                            onSelectOption = { option -> viewModel.selectOption(option) },
+                            onCustomInput = { text ->
+                                viewModel.updateInput(text)
+                                viewModel.sendMessage()
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
             }
         }
     }
@@ -220,6 +237,115 @@ private fun MessageBubble(message: CoachMessage) {
                 color = textColor,
                 style = MaterialTheme.typography.bodyMedium
             )
+        }
+    }
+}
+
+@Composable
+private fun OptionsGroupCard(
+    optionsGroup: CoachOptionsGroup,
+    onSelectOption: (CoachOption) -> Unit,
+    onCustomInput: (String) -> Unit
+) {
+    var showCustomInput by remember { mutableStateOf(false) }
+    var customText by remember { mutableStateOf("") }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // 问题标题
+            Text(
+                text = optionsGroup.question,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 选项卡片
+            optionsGroup.options.forEach { option ->
+                Card(
+                    onClick = { onSelectOption(option) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = option.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (!option.description.isNullOrBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = option.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // 自定义输入
+            if (optionsGroup.allowCustomInput) {
+                Spacer(modifier = Modifier.height(8.dp))
+                if (!showCustomInput) {
+                    TextButton(onClick = { showCustomInput = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("自定义输入...")
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = customText,
+                            onValueChange = { customText = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("输入你的回答...") },
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilledIconButton(
+                            onClick = {
+                                if (customText.isNotBlank()) {
+                                    onCustomInput(customText)
+                                    customText = ""
+                                    showCustomInput = false
+                                }
+                            },
+                            enabled = customText.isNotBlank()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
+                        }
+                    }
+                }
+            }
         }
     }
 }

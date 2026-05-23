@@ -25,6 +25,7 @@ import com.egoflow.app.domain.model.ScheduleTemplateItem
 @Composable
 fun ScheduleScreen(
     onBack: () -> Unit,
+    onNavigateToMilestones: () -> Unit = {},
     viewModel: ScheduleViewModel = viewModel(factory = ScheduleViewModel.Factory())
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -79,6 +80,9 @@ fun ScheduleScreen(
                 actions = {
                     IconButton(onClick = { icsLauncher.launch(arrayOf("text/calendar", "*/*")) }) {
                         Icon(Icons.Default.FileOpen, contentDescription = "导入 ICS")
+                    }
+                    IconButton(onClick = onNavigateToMilestones) {
+                        Icon(Icons.Default.Event, contentDescription = "重要时间节点")
                     }
                     TextButton(onClick = { viewModel.generateThisWeek() }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))

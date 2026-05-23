@@ -18,10 +18,19 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class Milestone(
     val id: String,
     val title: String,
-    val date: String,       // YYYY-MM-DD
-    val isExam: Boolean = true,
+    val date: String,          // YYYY-MM-DD
+    val time: String? = null,  // HH:mm（可选）
+    val type: String = "EXAM", // EXAM, DEADLINE, EVENT, OTHER
     val note: String = ""
-)
+) {
+    val typeLabel: String
+        get() = when (type) {
+            "EXAM" -> "考试"
+            "DEADLINE" -> "截止日期"
+            "EVENT" -> "事件"
+            else -> "其他"
+        }
+}
 
 class MilestoneRepository(private val context: Context) {
     companion object { private val KEY = stringPreferencesKey("milestones_json") }
@@ -32,19 +41,42 @@ class MilestoneRepository(private val context: Context) {
             val arr = JSONArray(raw)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Milestone(o.getString("id"), o.getString("title"), o.getString("date"), o.optBoolean("isExam", true), o.optString("note", ""))
+                Milestone(
+                    id = o.getString("id"),
+                    title = o.getString("title"),
+                    date = o.getString("date"),
+                    time = o.optString("time", "").ifEmpty { null },
+                    type = o.optString("type", "EXAM"),
+                    note = o.optString("note", "")
+                )
             }
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun add(title: String, date: String, isExam: Boolean, note: String = "") {
+    suspend fun add(title: String, date: String, type: String = "EXAM", note: String = "", time: String? = null) {
         val current = getAll()
-        val item = Milestone(UUID.randomUUID().toString(), title, date, isExam, note)
+        val item = Milestone(UUID.randomUUID().toString(), title, date, time, type, note)
         saveAll(current + item)
     }
 
     suspend fun remove(id: String) {
         saveAll(getAll().filter { it.id != id })
+    }
+
+    suspend fun update(
+        id: String,
+        title: String,
+        date: String,
+        type: String = "EXAM",
+        note: String = "",
+        time: String? = null
+    ) {
+        val current = getAll().toMutableList()
+        val index = current.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            current[index] = Milestone(id, title, date, time, type, note)
+            saveAll(current)
+        }
     }
 
     suspend fun getAll(): List<Milestone> {
@@ -53,7 +85,14 @@ class MilestoneRepository(private val context: Context) {
             val arr = JSONArray(raw)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Milestone(o.getString("id"), o.getString("title"), o.getString("date"), o.optBoolean("isExam", true), o.optString("note", ""))
+                Milestone(
+                    id = o.getString("id"),
+                    title = o.getString("title"),
+                    date = o.getString("date"),
+                    time = o.optString("time", "").ifEmpty { null },
+                    type = o.optString("type", "EXAM"),
+                    note = o.optString("note", "")
+                )
             }
         } catch (_: Exception) { emptyList() }
     }
@@ -62,7 +101,8 @@ class MilestoneRepository(private val context: Context) {
         val arr = JSONArray().apply {
             items.forEach { m ->
                 put(JSONObject().apply {
-                    put("id", m.id); put("title", m.title); put("date", m.date); put("isExam", m.isExam); put("note", m.note)
+                    put("id", m.id); put("title", m.title); put("date", m.date)
+                    put("time", m.time ?: ""); put("type", m.type); put("note", m.note)
                 })
             }
         }
