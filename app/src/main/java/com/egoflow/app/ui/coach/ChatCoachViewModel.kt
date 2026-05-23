@@ -174,11 +174,11 @@ class ChatCoachViewModel(
     fun selectHistoryDate(date: String) {
         _uiState.update { it.copy(selectedDate = date) }
         viewModelScope.launch {
-            chatRepository.getByDate(date).collect { entities ->
-                val msgs = entities.map { CoachMessage(id = it.id, role = it.role, content = it.content, timestamp = it.timestamp) }
-                _uiState.update { it.copy(historyMessages = msgs) }
-                return@launch
+            val entities = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                chatRepository.getByDate(date).first()
             }
+            val msgs = entities.map { CoachMessage(id = it.id, role = it.role, content = it.content, timestamp = it.timestamp) }
+            _uiState.update { it.copy(historyMessages = msgs) }
         }
     }
 
