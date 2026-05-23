@@ -196,6 +196,7 @@ private fun BlueprintTab(
             horizontalArrangement = Arrangement.End
         ) {
             OutlinedButton(onClick = {
+                viewModel.markAllImplemented()
                 val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(android.content.Intent.EXTRA_TEXT, markdown)

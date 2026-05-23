@@ -109,14 +109,30 @@ fun FocusFirewallScreen(
                     val block = uiState.currentBlock
 
                     if (block != null) {
-                        // 当前精力块标题
-                        Text(
-                            text = block.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold
-                        )
+                        // 当前精力块标题 + 完成勾选
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            IconButton(onClick = { viewModel.completeCurrentBlock() }) {
+                                Icon(
+                                    Icons.Default.CheckCircleOutline,
+                                    contentDescription = "标记完成",
+                                    tint = CalmGreen,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = block.title,
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -199,6 +215,12 @@ fun FocusFirewallScreen(
                                     )
                                 ) {
                                     Text("跳过")
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.deferTask() },
+                                    modifier = Modifier.height(56.dp)
+                                ) {
+                                    Text("延期")
                                 }
                             }
                         } else {

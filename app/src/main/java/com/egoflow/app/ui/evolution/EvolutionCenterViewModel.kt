@@ -67,6 +67,16 @@ class EvolutionCenterViewModel(
         }
     }
 
+    fun markAllImplemented() {
+        viewModelScope.launch {
+            evolutionRepository.getAll().first().forEach { entry ->
+                if (entry.status == "PENDING") {
+                    evolutionRepository.updateStatus(entry.id, "IMPLEMENTED")
+                }
+            }
+        }
+    }
+
     /**
      * 导出月度进化蓝图（生成 Markdown）
      */

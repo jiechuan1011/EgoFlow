@@ -146,6 +146,22 @@ class FocusFirewallViewModel(
         }
     }
 
+    /** 延期：将任务放回任务池 */
+    fun deferTask() {
+        viewModelScope.launch {
+            val block = _uiState.value.currentBlock ?: return@launch
+            taskRepository.updateTaskStatus(block.taskId, "POOL")
+            loadTodaySchedule()
+        }
+    }
+
+    /** 公开的完成方法（给 UI 调用） */
+    fun completeCurrentBlock() {
+        viewModelScope.launch {
+            completeCurrentBlock()
+        }
+    }
+
     private fun findCurrentBlock(plan: SchedulePlan): EnergyBlock? {
         val now = System.currentTimeMillis()
         return plan.energyBlocks.firstOrNull { block ->
