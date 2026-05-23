@@ -115,7 +115,7 @@ fun FocusFirewallScreen(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            IconButton(onClick = { viewModel.completeCurrentBlock() }) {
+                            IconButton(onClick = { viewModel.markTaskDone() }) {
                                 Icon(
                                     Icons.Default.CheckCircleOutline,
                                     contentDescription = "标记完成",

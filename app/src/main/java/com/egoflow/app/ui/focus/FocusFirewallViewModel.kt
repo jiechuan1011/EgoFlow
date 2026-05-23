@@ -156,9 +156,15 @@ class FocusFirewallViewModel(
     }
 
     /** 公开的完成方法（给 UI 调用） */
-    fun completeCurrentBlock() {
+    fun markTaskDone() {
         viewModelScope.launch {
-            completeCurrentBlock()
+            val block = _uiState.value.currentBlock ?: return@launch
+            taskRepository.updateTaskStatus(block.taskId, "DONE")
+            _uiState.update {
+                it.copy(completedMainLineMinutes = it.completedMainLineMinutes +
+                    ((block.endTime - block.startTime) / 60000).toInt())
+            }
+            loadTodaySchedule()
         }
     }
 
