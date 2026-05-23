@@ -98,9 +98,20 @@ class ElasticSchedulingEngine {
         val subLineTasks = tasks
             .filter { it.category == "SUB_LINE" && it.status == "POOL" }
 
-        // Step 3: 确定今日可用总时段
+        // Step 3: 确定今日可用总时段（从当前时间开始）
         val allHardBlocks = blocks.filter { it.isHardBlock }
         val freeSlots = computeFreeSlots(dayStart, dayEnd, allHardBlocks)
+        val now = System.currentTimeMillis()
+        // 裁剪已过去的时段
+        for (i in freeSlots.indices) {
+            val slot = freeSlots[i]
+            if (slot.end <= now) {
+                freeSlots[i] = slot.copy(start = slot.end) // 标记为不可用
+            } else if (slot.start < now) {
+                freeSlots[i] = slot.copy(start = now)
+            }
+        }
+        freeSlots.removeAll { it.start >= it.end }
 
         // Step 4: 分配主线任务到黄金时段和可用时段，带自动休息
         var mainLineScheduled = 0

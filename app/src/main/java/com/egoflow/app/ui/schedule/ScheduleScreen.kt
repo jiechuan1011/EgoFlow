@@ -63,6 +63,8 @@ fun ScheduleScreen(
     // 按星期分组
     val grouped = uiState.items.groupBy { it.dayOfWeek }
 
+    var showMenu by remember { mutableStateOf(false) }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -74,15 +76,25 @@ fun ScheduleScreen(
                     }
                 },
                 actions = {
-                    // 导入 ICS
                     IconButton(onClick = { icsLauncher.launch(arrayOf("text/calendar", "*/*")) }) {
                         Icon(Icons.Default.FileOpen, contentDescription = "导入 ICS")
                     }
-                    // 应用到本周
                     TextButton(onClick = { viewModel.generateThisWeek() }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("应用到本周")
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("删除全部", color = MaterialTheme.colorScheme.error) },
+                                onClick = { showMenu = false; viewModel.clearAll() },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
+                            )
+                        }
                     }
                 }
             )

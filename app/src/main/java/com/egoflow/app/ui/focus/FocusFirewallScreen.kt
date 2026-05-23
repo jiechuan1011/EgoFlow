@@ -123,7 +123,6 @@ fun FocusFirewallScreen(
                                     modifier = Modifier.size(32.dp)
                                 )
                             }
-                            Spacer(Modifier.width(8.dp))
                             Text(
                                 text = block.title,
                                 style = MaterialTheme.typography.headlineMedium,
@@ -132,6 +131,14 @@ fun FocusFirewallScreen(
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f)
                             )
+                            IconButton(onClick = { viewModel.deleteTask() }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "删除任务",
+                                    tint = HardBlockRed.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))

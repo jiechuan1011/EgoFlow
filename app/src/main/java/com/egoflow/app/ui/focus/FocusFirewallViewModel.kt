@@ -138,6 +138,14 @@ class FocusFirewallViewModel(
         }
     }
 
+    fun deleteTask() {
+        viewModelScope.launch {
+            val block = _uiState.value.currentBlock ?: return@launch
+            taskRepository.getTaskById(block.taskId)?.let { taskRepository.deleteTask(it) }
+            loadTodaySchedule()
+        }
+    }
+
     fun skipCurrentBlock() {
         viewModelScope.launch {
             val block = _uiState.value.currentBlock ?: return@launch

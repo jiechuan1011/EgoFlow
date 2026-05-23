@@ -75,7 +75,18 @@ object IcsParser {
             }
         }
 
-        return items
+        // 合并去重：相同(课程名+星期+开始时间) → 合并日期范围，保留最宽区间
+        return items.groupBy { Triple(it.subjectName, it.dayOfWeek, it.startHour * 100 + it.startMinute) }
+            .map { (_, dups) ->
+                dups.reduce { a, b ->
+                    a.copy(
+                        validFrom = minOf(a.validFrom ?: Long.MAX_VALUE, b.validFrom ?: Long.MAX_VALUE)
+                            .let { if (it == Long.MAX_VALUE) null else it },
+                        validUntil = maxOf(a.validUntil ?: 0L, b.validUntil ?: 0L)
+                            .let { if (it == 0L) null else it }
+                    )
+                }
+            }
     }
 
     /** 将时间戳归零到当天 00:00 */

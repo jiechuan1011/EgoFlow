@@ -159,6 +159,13 @@ class ScheduleViewModel(
         _uiState.update { it.copy(importResult = null) }
     }
 
+    fun clearAll() {
+        viewModelScope.launch {
+            templateRepository.saveItems(emptyList())
+            _uiState.update { it.copy(saved = true, importResult = "已清空所有课程") }
+        }
+    }
+
     fun clearSavedFlag() {
         _uiState.update { it.copy(saved = false) }
     }
