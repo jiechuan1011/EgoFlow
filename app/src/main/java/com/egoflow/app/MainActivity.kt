@@ -1,6 +1,7 @@
 package com.egoflow.app
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,13 +15,26 @@ import com.egoflow.app.ui.theme.EgoFlowTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        try {
+            enableEdgeToEdge()
+        } catch (e: Exception) {
+            Log.w("EgoFlow", "enableEdgeToEdge failed", e)
+        }
 
-        setContent {
-            EgoFlowTheme {
+        try {
+            setContent {
+                EgoFlowTheme {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        val navController = rememberNavController()
+                        AppNavigation(navController = navController)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("EgoFlow", "Composition failed", e)
+            setContent {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    val navController = rememberNavController()
-                    AppNavigation(navController = navController)
+                    androidx.compose.material3.Text("App failed to start: ${e.message}")
                 }
             }
         }
