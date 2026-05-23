@@ -1,7 +1,7 @@
 package com.egoflow.app.ai
 
 /**
- * AI 配置 - 用户需填入自己的 API Key
+ * AI 配置 - 运行时配置，由 SettingsRepository 持久化
  */
 object AiConfig {
     var deepSeekApiKey: String = ""

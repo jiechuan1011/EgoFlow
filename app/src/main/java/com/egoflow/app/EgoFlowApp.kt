@@ -2,17 +2,23 @@ package com.egoflow.app
 
 import android.app.Application
 import android.util.Log
+import com.egoflow.app.ai.AiConfig
+import com.egoflow.app.ai.ClaudeService
+import com.egoflow.app.ai.DeepSeekService
 import com.egoflow.app.data.database.AppDatabase
 import com.egoflow.app.data.repository.*
 import com.egoflow.app.scheduler.ElasticSchedulingEngine
-import com.egoflow.app.ai.DeepSeekService
-import com.egoflow.app.ai.ClaudeService
-import java.io.File
-import java.io.FileWriter
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class EgoFlowApp : Application() {
 
     lateinit var database: AppDatabase
+        private set
+    lateinit var settingsRepository: SettingsRepository
         private set
 
     // Repositories
@@ -33,65 +39,53 @@ class EgoFlowApp : Application() {
     lateinit var claudeService: ClaudeService
         private set
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
-        // Log as early as possible — visible via `adb logcat -d | findstr EgoFlowInit`
         android.util.Log.e("EgoFlowInit", "Application.onCreate() entered")
 
-        // Set up crash handler BEFORE super.onCreate() so init crashes are also caught
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
                 android.util.Log.e("EgoFlowInit", "=== CRASH on ${thread.name} ===", throwable)
-                // Try writing crash log to logcat AND file
-                writeCrashLog(throwable)
             } catch (_: Exception) {}
             defaultHandler?.uncaughtException(thread, throwable)
         }
 
         try {
             super.onCreate()
-            android.util.Log.e("EgoFlowInit", "super.onCreate() completed")
         } catch (e: Exception) {
             android.util.Log.e("EgoFlowInit", "super.onCreate() FAILED", e)
-            writeCrashLog(e)
             throw e
         }
 
         instance = this
-        android.util.Log.e("EgoFlowInit", "instance set")
 
         try {
-            Log.d("EgoFlowInit", "Initializing database...")
             database = AppDatabase.getInstance(this)
-            Log.d("EgoFlowInit", "Database initialized")
+            settingsRepository = SettingsRepository(this)
+
+            // 从 DataStore 加载已保存的 API Key
+            appScope.launch {
+                AiConfig.deepSeekApiKey = settingsRepository.deepSeekApiKey.first()
+                AiConfig.claudeApiKey = settingsRepository.claudeApiKey.first()
+                AiConfig.deepSeekBaseUrl = settingsRepository.deepSeekBaseUrl.first()
+                AiConfig.claudeBaseUrl = settingsRepository.claudeBaseUrl.first()
+                Log.d("EgoFlowInit", "Settings loaded from DataStore")
+            }
 
             taskRepository = TaskRepository(database.taskDao())
             evolutionRepository = EvolutionRepository(database.evolutionBacklogDao())
             hardBlockRepository = HardBlockRepository(database.hardBlockDao())
             metricsRepository = MetricsRepository(database.dailyMetricsDao())
-            Log.d("EgoFlowInit", "Repositories initialized")
 
             schedulingEngine = ElasticSchedulingEngine()
             deepSeekService = DeepSeekService()
             claudeService = ClaudeService()
-            Log.d("EgoFlowInit", "All services initialized successfully")
+            Log.d("EgoFlowInit", "All initialized")
         } catch (e: Exception) {
-            Log.e("EgoFlowInit", "Initialization FAILED", e)
-            writeCrashLog(e)
+            Log.e("EgoFlowInit", "Init failed", e)
             throw e
-        }
-    }
-
-    private fun writeCrashLog(throwable: Throwable) {
-        try {
-            val logFile = File(cacheDir, "egoflow_crash.log")
-            FileWriter(logFile, true).use { writer ->
-                writer.appendLine("=== CRASH at ${System.currentTimeMillis()} ===")
-                writer.appendLine(throwable.stackTraceToString())
-                writer.appendLine()
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("EgoFlowInit", "Failed to write crash log", e)
         }
     }
 
