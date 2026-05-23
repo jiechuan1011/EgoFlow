@@ -15,8 +15,10 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE category = :category AND status = 'POOL' ORDER BY created_at DESC")
     fun getPoolTasksByCategory(category: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE status = 'SCHEDULED' ORDER BY
-            CASE WHEN drain_level = 'HIGH' THEN 0 ELSE 1 END, created_at ASC")
+    @Query("""
+        SELECT * FROM tasks WHERE status = 'SCHEDULED' ORDER BY
+            CASE WHEN drain_level = 'HIGH' THEN 0 ELSE 1 END, created_at ASC
+    """)
     fun getScheduledTasks(): Flow<List<TaskEntity>>
 
     @Query("SELECT * FROM tasks WHERE id = :id")

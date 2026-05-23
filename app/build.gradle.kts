@@ -72,8 +72,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 如果有签名配置则使用
-            if (ciStoreFile != null && ciStorePassword != null) {
+            // 如果有签名配置且 keystore 文件存在则使用
+            if (ciStoreFile != null && ciStoreFile.isNotEmpty() &&
+                ciStorePassword != null && ciStorePassword.isNotEmpty() &&
+                rootProject.file(ciStoreFile).exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
