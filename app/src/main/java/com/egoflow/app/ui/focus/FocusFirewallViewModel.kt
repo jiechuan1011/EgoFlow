@@ -23,7 +23,10 @@ data class FocusUiState(
     val completedMainLineMinutes: Int = 0,
     val showTaskPool: Boolean = false,
     val poolTasks: List<TaskEntity> = emptyList(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val showTimePicker: Boolean = false,
+    val pickerHour: Int = 8,
+    val pickerMinute: Int = 0
 )
 
 class FocusFirewallViewModel(
@@ -159,6 +162,43 @@ class FocusFirewallViewModel(
         viewModelScope.launch {
             val block = _uiState.value.currentBlock ?: return@launch
             taskRepository.updateTaskStatus(block.taskId, "POOL")
+            loadTodaySchedule()
+        }
+    }
+
+    fun showTimePicker() {
+        val block = _uiState.value.currentBlock ?: return
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = block.startTime
+        _uiState.update { it.copy(showTimePicker = true, pickerHour = cal.get(java.util.Calendar.HOUR_OF_DAY), pickerMinute = cal.get(java.util.Calendar.MINUTE)) }
+    }
+
+    fun hideTimePicker() { _uiState.update { it.copy(showTimePicker = false) } }
+
+    fun updatePickerTime(hour: Int, minute: Int) { _uiState.update { it.copy(pickerHour = hour, pickerMinute = minute) } }
+
+    /** 将当前任务重新排到指定时间 */
+    fun rescheduleTask(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            val block = _uiState.value.currentBlock ?: return@launch
+            val today = java.util.Calendar.getInstance()
+            val newStart = let {
+                val c = java.util.Calendar.getInstance()
+                c.set(java.util.Calendar.HOUR_OF_DAY, hour)
+                c.set(java.util.Calendar.MINUTE, minute)
+                c.set(java.util.Calendar.SECOND, 0)
+                c.set(java.util.Calendar.MILLISECOND, 0)
+                c.timeInMillis
+            }
+            val duration = block.endTime - block.startTime
+            val newEnd = newStart + duration
+            // 删除旧 hard block，创建新的
+            val existing = hardBlockRepository.getBlocksForDaySync(
+                newStart - 86400_000, newStart + 86400_000
+            )
+            existing.filter { it.id == block.taskId }.forEach { hardBlockRepository.deleteBlock(it) }
+            hardBlockRepository.addBlock(subjectName = block.title, startTime = newStart, endTime = newEnd)
+            _uiState.update { it.copy(showTimePicker = false) }
             loadTodaySchedule()
         }
     }

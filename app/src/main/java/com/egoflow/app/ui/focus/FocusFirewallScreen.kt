@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import java.text.SimpleDateFormat
+import java.util.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,7 +143,19 @@ fun FocusFirewallScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // 时间显示（点击可修改）
+                        TextButton(onClick = { viewModel.showTimePicker() }) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            val fmt = SimpleDateFormat("HH:mm", Locale.CHINA)
+                            Text(
+                                text = "${fmt.format(Date(block.startTime))} - ${fmt.format(Date(block.endTime))}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         // 类别标签
                         val categoryColor = when (block.category) {
@@ -349,6 +363,37 @@ fun FocusFirewallScreen(
                 )
             }
         }
+    }
+
+    // 时间选择对话框
+    if (uiState.showTimePicker) {
+        var hour by remember { mutableIntStateOf(uiState.pickerHour) }
+        var minute by remember { mutableIntStateOf(uiState.pickerMinute) }
+        AlertDialog(
+            onDismissRequest = { viewModel.hideTimePicker() },
+            title = { Text("设置任务时间") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 小时选择
+                    Text("小时", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (6..23).forEach { h ->
+                            FilterChip(selected = hour == h, onClick = { hour = h }, label = { Text("%02d".format(h)) })
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // 分钟选择
+                    Text("分钟", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(0, 15, 30, 45).forEach { m ->
+                            FilterChip(selected = minute == m, onClick = { minute = m }, label = { Text("%02d".format(m)) })
+                        }
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { viewModel.rescheduleTask(hour, minute) }) { Text("确认") } },
+            dismissButton = { TextButton(onClick = { viewModel.hideTimePicker() }) { Text("取消") } }
+        )
     }
 }
 
