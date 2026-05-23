@@ -118,7 +118,8 @@ class EgoFlowApp : Application() {
                 Triple("FEATURE_REQ", "从当前时间开始排程", "任务排程方式应从当下时间开始排，而非从早上6点开始排，避免排已过时的任务。" to null),
                 Triple("FEATURE_REQ", "自然语言输入规范化", "AI教练需要对用户的自然语言输入进行规范化处理，提高任务创建的准确性。" to null),
                 Triple("UI_UX", "应用到本周不可用", "课程表的应用到本周功能无反应，生成了硬墙但主界面不显示。" to null),
-                Triple("FEATURE_REQ", "课程表管理改进", "课程表需要：一周一课表而非总表、导入去重、一键删除全部、针对不同周的课程管理。" to "已增加一键删除全部、ICS去重合并、按日期范围过滤周次")
+                Triple("FEATURE_REQ", "课程表管理改进", "课程表需要：一周一课表而非总表、导入去重、一键删除全部、针对不同周的课程管理。" to "已增加一键删除全部、ICS去重合并、按日期范围过滤周次"),
+                Triple("FEATURE_REQ", "自动安排日常任务", "用户要求系统自动安排洗澡、洗衣服、搭衣服等日常任务，周循环并提供提示功能。" to null)
             )
 
             seeds.forEach { (category, title, desc) ->
