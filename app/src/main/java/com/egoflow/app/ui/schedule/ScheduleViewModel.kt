@@ -7,14 +7,18 @@ import com.egoflow.app.EgoFlowApp
 import com.egoflow.app.data.repository.ScheduleTemplateRepository
 import com.egoflow.app.data.repository.HardBlockRepository
 import com.egoflow.app.domain.model.ScheduleTemplateItem
+import com.egoflow.app.util.IcsParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 data class ScheduleUiState(
     val items: List<ScheduleTemplateItem> = emptyList(),
     val showAddDialog: Boolean = false,
-    val saved: Boolean = false
+    val saved: Boolean = false,
+    val importResult: String? = null
 )
 
 class ScheduleViewModel(
@@ -123,6 +127,36 @@ class ScheduleViewModel(
             }
             _uiState.update { it.copy(saved = true) }
         }
+    }
+
+    /**
+     * 导入 ICS 文件内容，解析为课程表条目
+     */
+    fun importIcs(icsContent: String) {
+        viewModelScope.launch {
+            val items = withContext(Dispatchers.Default) {
+                IcsParser.parseToTemplateItems(icsContent)
+            }
+            if (items.isEmpty()) {
+                _uiState.update { it.copy(importResult = "未识别到课程事件，请检查 ICS 文件格式") }
+                return@launch
+            }
+            // 合并到现有条目
+            val current = templateRepository.getAllItems()
+            val merged = current + items
+            templateRepository.saveItems(merged)
+            _uiState.update {
+                it.copy(importResult = "成功导入 ${items.size} 个课程，去重后共 ${merged.size} 项")
+            }
+        }
+    }
+
+    fun setImportResult(msg: String) {
+        _uiState.update { it.copy(importResult = msg) }
+    }
+
+    fun clearImportResult() {
+        _uiState.update { it.copy(importResult = null) }
     }
 
     fun clearSavedFlag() {

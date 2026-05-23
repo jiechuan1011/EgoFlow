@@ -1,5 +1,8 @@
 package com.egoflow.app.ui.schedule
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +27,31 @@ fun ScheduleScreen(
     viewModel: ScheduleViewModel = viewModel(factory = ScheduleViewModel.Factory())
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // 文件选择器：读取 ICS 文件内容
+    val icsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val text = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                viewModel.importIcs(text)
+            } catch (e: Exception) {
+                viewModel.setImportResult("读取文件失败: ${e.message}")
+            }
+        }
+    }
+
+    // 导入结果提示
+    LaunchedEffect(uiState.importResult) {
+        uiState.importResult?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearImportResult()
+        }
+    }
 
     LaunchedEffect(uiState.saved) {
         if (uiState.saved) {
@@ -35,6 +64,7 @@ fun ScheduleScreen(
     val grouped = uiState.items.groupBy { it.dayOfWeek }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("课程表", fontWeight = FontWeight.Bold) },
@@ -44,7 +74,11 @@ fun ScheduleScreen(
                     }
                 },
                 actions = {
-                    // 生成本周 hard blocks
+                    // 导入 ICS
+                    IconButton(onClick = { icsLauncher.launch(arrayOf("text/calendar", "*/*")) }) {
+                        Icon(Icons.Default.FileOpen, contentDescription = "导入 ICS")
+                    }
+                    // 应用到本周
                     TextButton(onClick = { viewModel.generateThisWeek() }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
@@ -64,23 +98,6 @@ fun ScheduleScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 保存提示
-            if (uiState.saved) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("已保存", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-
             if (uiState.items.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -99,9 +116,9 @@ fun ScheduleScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "添加后点击「应用到本周」生成日程硬墙",
+                            text = "或点击顶部 📂 导入 ICS 课表文件",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                         )
@@ -142,7 +159,7 @@ fun ScheduleScreen(
                             }
                         }
                     }
-                    item { Spacer(Modifier.height(80.dp)) } // FAB padding
+                    item { Spacer(Modifier.height(80.dp)) }
                 }
             }
         }
@@ -238,7 +255,6 @@ private fun AddItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // 星期选择
                 ExposedDropdownMenuBox(
                     expanded = dayExpanded,
                     onExpandedChange = { dayExpanded = it }
@@ -261,7 +277,6 @@ private fun AddItemDialog(
                     }
                 }
 
-                // 开始时间
                 ExposedDropdownMenuBox(
                     expanded = startTimeExpanded,
                     onExpandedChange = { startTimeExpanded = it }
@@ -286,7 +301,6 @@ private fun AddItemDialog(
                     }
                 }
 
-                // 结束时间
                 ExposedDropdownMenuBox(
                     expanded = endTimeExpanded,
                     onExpandedChange = { endTimeExpanded = it }
