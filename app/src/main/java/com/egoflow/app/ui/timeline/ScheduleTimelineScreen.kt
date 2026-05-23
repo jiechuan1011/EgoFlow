@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -156,7 +157,8 @@ fun ScheduleTimelineScreen(
                             } else if (!block.isHardBlock) {
                                 viewModel.selectDragSource(block)
                             }
-                        }
+                        },
+                        onEdit = { b -> viewModel.startEditTime(b) }
                     )
                 }
 
@@ -186,6 +188,34 @@ fun ScheduleTimelineScreen(
             }
         }
     }
+
+    // 时间编辑对话框
+    uiState.editingBlock?.let { block ->
+        var hour by remember { mutableIntStateOf(uiState.pickerHour) }
+        var minute by remember { mutableIntStateOf(uiState.pickerMinute) }
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelEdit() },
+            title = { Text("修改「${block.title}」时间") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("小时", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (6..23).forEach { h ->
+                            FilterChip(selected = hour == h, onClick = { hour = h }, label = { Text("%02d".format(h)) })
+                        }
+                    }
+                    Text("分钟", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(0, 15, 30, 45).forEach { m ->
+                            FilterChip(selected = minute == m, onClick = { minute = m }, label = { Text("%02d".format(m)) })
+                        }
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { viewModel.rescheduleBlock(hour, minute) }) { Text("确认") } },
+            dismissButton = { TextButton(onClick = { viewModel.cancelEdit() }) { Text("取消") } }
+        )
+    }
 }
 
 @Composable
@@ -212,7 +242,8 @@ private fun TimelineBlockCard(
     block: EnergyBlock,
     isSelected: Boolean,
     isSourceMode: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEdit: (EnergyBlock) -> Unit = {}
 ) {
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -327,8 +358,11 @@ private fun TimelineBlockCard(
                 }
             }
 
-            // 操作指示
+            // 时间编辑 + 操作指示
             if (!block.isHardBlock) {
+                IconButton(onClick = { onEdit(block) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Schedule, contentDescription = "修改时间", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                }
                 Icon(
                     imageVector = if (isSourceMode) Icons.Default.SwapHoriz else Icons.Default.DragHandle,
                     contentDescription = if (isSourceMode) "点击互换" else "选择以调换",

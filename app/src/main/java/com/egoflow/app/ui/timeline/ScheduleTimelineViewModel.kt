@@ -19,7 +19,10 @@ data class TimelineUiState(
     val dragSource: EnergyBlock? = null,
     val swapTarget: EnergyBlock? = null,
     val swapErrorMessage: String? = null,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val editingBlock: EnergyBlock? = null,
+    val pickerHour: Int = 8,
+    val pickerMinute: Int = 0
 )
 
 class ScheduleTimelineViewModel(
@@ -72,16 +75,10 @@ class ScheduleTimelineViewModel(
         }
     }
 
-    /**
-     * 选择拖拽源块
-     */
     fun selectDragSource(block: EnergyBlock) {
         _uiState.update { it.copy(dragSource = block, swapTarget = null, swapErrorMessage = null) }
     }
 
-    /**
-     * 选择交换目标并执行互换
-     */
     fun swapWith(block: EnergyBlock) {
         val source = _uiState.value.dragSource ?: return
 
@@ -96,19 +93,47 @@ class ScheduleTimelineViewModel(
         }
 
         viewModelScope.launch {
-            // 执行互换 —— 在数据库层面交换两个任务的排程状态
             taskRepository.updateTaskStatus(source.taskId, "POOL")
             taskRepository.updateTaskStatus(block.taskId, "POOL")
             loadSchedule()
         }
     }
 
-    fun clearDragSource() {
-        _uiState.update { it.copy(dragSource = null) }
+    fun clearDragSource() { _uiState.update { it.copy(dragSource = null) } }
+    fun clearError() { _uiState.update { it.copy(swapErrorMessage = null) } }
+
+    // ===== 时间编辑 =====
+    fun startEditTime(block: EnergyBlock) {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = block.startTime
+        _uiState.update { it.copy(editingBlock = block, pickerHour = cal.get(Calendar.HOUR_OF_DAY), pickerMinute = cal.get(Calendar.MINUTE)) }
     }
 
-    fun clearError() {
-        _uiState.update { it.copy(swapErrorMessage = null) }
+    fun cancelEdit() { _uiState.update { it.copy(editingBlock = null) } }
+
+    fun updatePickerTime(hour: Int, minute: Int) { _uiState.update { it.copy(pickerHour = hour, pickerMinute = minute) } }
+
+    fun rescheduleBlock(hour: Int, minute: Int) {
+        val block = _uiState.value.editingBlock ?: return
+        viewModelScope.launch {
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.HOUR_OF_DAY, hour)
+            cal.set(Calendar.MINUTE, minute)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            val newStart = cal.timeInMillis
+            val duration = block.endTime - block.startTime
+            val newEnd = newStart + duration
+
+            val dayStart = newStart - 86400_000
+            val dayEnd = newStart + 86400_000
+            val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
+            existing.filter { it.id == block.taskId }.forEach { hardBlockRepository.deleteBlock(it) }
+            hardBlockRepository.addBlock(subjectName = block.title, startTime = newStart, endTime = newEnd)
+
+            _uiState.update { it.copy(editingBlock = null) }
+            loadSchedule()
+        }
     }
 
     private fun getDayStartMillis(): Long {
