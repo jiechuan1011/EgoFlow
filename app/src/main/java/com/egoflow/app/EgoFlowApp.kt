@@ -34,56 +34,68 @@ class EgoFlowApp : Application() {
         private set
 
     override fun onCreate() {
-        super.onCreate()
-        setupCrashHandler()
-        instance = this
+        // Log as early as possible — visible via `adb logcat -d | findstr EgoFlowInit`
+        android.util.Log.e("EgoFlowInit", "Application.onCreate() entered")
+
+        // Set up crash handler BEFORE super.onCreate() so init crashes are also caught
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                android.util.Log.e("EgoFlowInit", "=== CRASH on ${thread.name} ===", throwable)
+                // Try writing crash log to logcat AND file
+                writeCrashLog(throwable)
+            } catch (_: Exception) {}
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
 
         try {
-            Log.d(TAG, "Initializing database...")
+            super.onCreate()
+            android.util.Log.e("EgoFlowInit", "super.onCreate() completed")
+        } catch (e: Exception) {
+            android.util.Log.e("EgoFlowInit", "super.onCreate() FAILED", e)
+            writeCrashLog(e)
+            throw e
+        }
+
+        instance = this
+        android.util.Log.e("EgoFlowInit", "instance set")
+
+        try {
+            Log.d("EgoFlowInit", "Initializing database...")
             database = AppDatabase.getInstance(this)
-            Log.d(TAG, "Database initialized")
+            Log.d("EgoFlowInit", "Database initialized")
 
             taskRepository = TaskRepository(database.taskDao())
             evolutionRepository = EvolutionRepository(database.evolutionBacklogDao())
             hardBlockRepository = HardBlockRepository(database.hardBlockDao())
             metricsRepository = MetricsRepository(database.dailyMetricsDao())
-            Log.d(TAG, "Repositories initialized")
+            Log.d("EgoFlowInit", "Repositories initialized")
 
             schedulingEngine = ElasticSchedulingEngine()
             deepSeekService = DeepSeekService()
             claudeService = ClaudeService()
-            Log.d(TAG, "Services initialized")
+            Log.d("EgoFlowInit", "All services initialized successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Initialization failed", e)
-            writeCrashLog("init", e)
+            Log.e("EgoFlowInit", "Initialization FAILED", e)
+            writeCrashLog(e)
             throw e
         }
     }
 
-    private fun setupCrashHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                Log.e(TAG, "Uncaught crash on ${thread.name}", throwable)
-                writeCrashLog("crash", throwable)
-            } catch (_: Exception) {}
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
-    }
-
-    private fun writeCrashLog(type: String, throwable: Throwable) {
+    private fun writeCrashLog(throwable: Throwable) {
         try {
-            val logFile = File(filesDir, "egoflow_crash.log")
+            val logFile = File(cacheDir, "egoflow_crash.log")
             FileWriter(logFile, true).use { writer ->
-                writer.appendLine("=== $type at ${System.currentTimeMillis()} ===")
+                writer.appendLine("=== CRASH at ${System.currentTimeMillis()} ===")
                 writer.appendLine(throwable.stackTraceToString())
                 writer.appendLine()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("EgoFlowInit", "Failed to write crash log", e)
+        }
     }
 
     companion object {
-        private const val TAG = "EgoFlow"
         lateinit var instance: EgoFlowApp
             private set
     }
