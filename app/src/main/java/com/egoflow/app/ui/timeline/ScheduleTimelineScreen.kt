@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,8 +19,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.egoflow.app.domain.model.EnergyBlock
@@ -257,16 +258,14 @@ private fun NumberWheel(
     onValueChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val itemHeightDp: Dp = 40.dp
-    val itemHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { itemHeightDp.toPx() }
+    val itemHeightDp = 40.dp
     val visibleItems = 5
     val totalHeight = itemHeightDp * visibleItems
 
     // 计算初始 index
     val initialIndex = (range.indexOf(initialValue).coerceAtLeast(0))
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialIndex,
-        initialFirstVisibleItemOffset = 0
+        initialFirstVisibleItemIndex = initialIndex
     )
 
     val coroutineScope = rememberCoroutineScope()
@@ -327,7 +326,7 @@ private fun NumberWheel(
                         },
                     textAlign = TextAlign.Center,
                     fontWeight = if (isCenter) FontWeight.Bold else FontWeight.Normal,
-                    fontSize = if (isCenter) androidx.compose.ui.unit.sp(22) else androidx.compose.ui.unit.sp(16),
+                    fontSize = if (isCenter) 22.sp else 16.sp,
                     color = if (isCenter)
                         MaterialTheme.colorScheme.primary
                     else
