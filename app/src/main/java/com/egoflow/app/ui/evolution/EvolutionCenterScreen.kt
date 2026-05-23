@@ -3,7 +3,9 @@ package com.egoflow.app.ui.evolution
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,12 +17,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.egoflow.app.data.entity.EvolutionBacklogEntity
+import com.egoflow.app.ui.components.MarkdownText
 import com.egoflow.app.ui.theme.*
 
 /**
  * 进化中心界面
  *
- * 展示进化蓄水池条目、配置面板，支持导出月度蓝图
+ * 展示进化蓄水池条目、Markdown 蓝图查看器
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,8 +32,7 @@ fun EvolutionCenterScreen(
     viewModel: EvolutionCenterViewModel = viewModel(factory = EvolutionCenterViewModel.Factory())
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showExportDialog by remember { mutableStateOf(false) }
-    var exportedContent by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -39,14 +41,6 @@ fun EvolutionCenterScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        exportedContent = viewModel.exportBlueprint()
-                        showExportDialog = true
-                    }) {
-                        Icon(Icons.Default.FileDownload, contentDescription = "导出蓝图")
                     }
                 }
             )
@@ -57,120 +51,165 @@ fun EvolutionCenterScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 过滤器标签
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("ALL" to "全部", "USER_PROMPT" to "用户需求", "AI_DIAGNOSIS" to "AI诊断").forEach { (key, label) ->
-                    FilterChip(
-                        selected = uiState.selectedFilter == key,
-                        onClick = { viewModel.setFilter(key) },
-                        label = { Text(label) }
-                    )
-                }
-            }
-
-            // 系统配置面板
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+            // 标签切换：条目 / Markdown
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("进化条目") },
+                    icon = { Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "当前调度配置",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    uiState.configOverrides.forEach { (key, value) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = key,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = value.toString(),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("蓝图文档") },
+                    icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 进化条目列表
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val filteredEntries = if (uiState.selectedFilter == "ALL") {
-                    uiState.entries
-                } else {
-                    uiState.entries.filter { it.source == uiState.selectedFilter }
-                }
-
-                if (filteredEntries.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "暂无进化条目",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                }
-
-                items(filteredEntries) { entry ->
-                    EvolutionEntryCard(
-                        entry = entry,
-                        onImplement = { viewModel.markImplemented(entry.id) },
-                        onDeprecate = { viewModel.markDeprecated(entry.id) }
-                    )
-                }
+            when (selectedTab) {
+                0 -> EntriesTab(uiState, viewModel)
+                1 -> BlueprintTab(uiState, viewModel)
             }
         }
     }
+}
 
-    // 导出对话框
-    if (showExportDialog) {
-        AlertDialog(
-            onDismissRequest = { showExportDialog = false },
-            title = { Text("月度进化蓝图") },
-            text = {
-                SelectionContainer {
-                    Text(
-                        text = exportedContent,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showExportDialog = false }) {
-                    Text("关闭")
+@Composable
+private fun EntriesTab(
+    uiState: EvolutionUiState,
+    viewModel: EvolutionCenterViewModel
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 过滤器标签
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("ALL" to "全部", "USER_PROMPT" to "用户需求", "AI_DIAGNOSIS" to "AI诊断").forEach { (key, label) ->
+                FilterChip(
+                    selected = uiState.selectedFilter == key,
+                    onClick = { viewModel.setFilter(key) },
+                    label = { Text(label) }
+                )
+            }
+        }
+
+        // 系统配置面板
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "当前调度配置",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                uiState.configOverrides.forEach { (key, value) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = key, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = value.toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 进化条目列表
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filteredEntries = if (uiState.selectedFilter == "ALL") {
+                uiState.entries
+            } else {
+                uiState.entries.filter { it.source == uiState.selectedFilter }
+            }
+
+            if (filteredEntries.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "暂无进化条目",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+
+            items(filteredEntries) { entry ->
+                EvolutionEntryCard(
+                    entry = entry,
+                    onImplement = { viewModel.markImplemented(entry.id) },
+                    onDeprecate = { viewModel.markDeprecated(entry.id) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BlueprintTab(
+    uiState: EvolutionUiState,
+    viewModel: EvolutionCenterViewModel
+) {
+    val scrollState = rememberScrollState()
+    val markdown = remember(uiState.entries, uiState.configOverrides) {
+        viewModel.exportBlueprint()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+    ) {
+        // 导出按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            OutlinedButton(onClick = { /* 导出/分享 */ }) {
+                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("导出")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 渲染 Markdown
+        MarkdownText(
+            markdown = markdown,
+            modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -274,9 +313,7 @@ private fun EvolutionEntryCard(
 
             if (entry.status == "PENDING") {
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onImplement) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -290,12 +327,5 @@ private fun EvolutionEntryCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SelectionContainer(content: @Composable () -> Unit) {
-    androidx.compose.foundation.text.selection.SelectionContainer {
-        content()
     }
 }
