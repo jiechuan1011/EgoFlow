@@ -69,7 +69,7 @@ class ChatCoachViewModel(
         viewModelScope.launch {
             val chatMessages = _uiState.value.messages
                 .filter { it.role == "user" || it.role == "coach" }
-                .map { DeepSeekService.ChatMessage(it.role, it.content) }
+                .map { DeepSeekService.ChatMessage(if (it.role == "coach") "assistant" else it.role, it.content) }
                 .takeLast(20) // 保留最近20条作为上下文
 
             val result = deepSeekService.sendChatMessage(chatMessages)
