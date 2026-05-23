@@ -51,17 +51,21 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = if (ciStoreFile != null && ciStoreFile.isNotEmpty()) {
-                if (ciStoreFile.startsWith("/") || ciStoreFile.contains(":")) {
-                    file(ciStoreFile)
-                } else {
-                    rootProject.file(ciStoreFile)
-                }
-            } else null
-            storePassword = ciStorePassword
-            keyAlias = ciKeyAlias
-            keyPassword = ciKeyPassword
+        // 仅在 keystore 存在时创建 release 签名配置
+        val releaseStoreFile = if (ciStoreFile != null && ciStoreFile.isNotEmpty()) {
+            if (ciStoreFile.startsWith("/") || ciStoreFile.contains(":")) {
+                file(ciStoreFile)
+            } else {
+                rootProject.file(ciStoreFile)
+            }
+        } else null
+        if (releaseStoreFile != null && releaseStoreFile.exists()) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = ciStorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
+            }
         }
     }
 
@@ -72,11 +76,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 如果有签名配置且 keystore 文件存在则使用
-            if (ciStoreFile != null && ciStoreFile.isNotEmpty() &&
-                ciStorePassword != null && ciStorePassword.isNotEmpty() &&
-                rootProject.file(ciStoreFile).exists()) {
+            // 如果有 release 签名配置则使用，否则回退到 debug 签名
+            if (signingConfigs.findByName("release") != null) {
                 signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
         debug {
