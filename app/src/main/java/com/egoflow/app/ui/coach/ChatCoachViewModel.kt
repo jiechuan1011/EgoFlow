@@ -9,8 +9,10 @@ import com.egoflow.app.data.repository.ChatRepository
 import com.egoflow.app.data.repository.EvolutionRepository
 import com.egoflow.app.data.repository.TaskRepository
 import com.egoflow.app.domain.model.CoachMessage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class CoachUiState(
@@ -172,13 +174,13 @@ class ChatCoachViewModel(
     }
 
     fun selectHistoryDate(date: String) {
-        _uiState.update { it.copy(selectedDate = date) }
+        _uiState.update { st -> st.copy(selectedDate = date) }
         viewModelScope.launch {
-            val entities = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val entities = withContext(Dispatchers.IO) {
                 chatRepository.getByDate(date).first()
             }
-            val msgs = entities.map { CoachMessage(id = it.id, role = it.role, content = it.content, timestamp = it.timestamp) }
-            _uiState.update { it.copy(historyMessages = msgs) }
+            val msgs = entities.map { e -> CoachMessage(id = e.id, role = e.role, content = e.content, timestamp = e.timestamp) }
+            _uiState.update { st -> st.copy(historyMessages = msgs) }
         }
     }
 

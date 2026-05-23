@@ -36,28 +36,32 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        launchStringFlow(settingsRepository.deepSeekApiKey) { copyDeepSeek { it.copy(apiKey = this) } }
-        launchStringFlow(settingsRepository.deepSeekBaseUrl) { copyDeepSeek { it.copy(baseUrl = this) } }
-        launchStringFlow(settingsRepository.claudeApiKey) { copyClaude { it.copy(apiKey = this) } }
-        launchStringFlow(settingsRepository.claudeBaseUrl) { copyClaude { it.copy(baseUrl = this) } }
-        launchStringFlow(settingsRepository.openAiApiKey) { copyOpenAi { it.copy(apiKey = this) } }
-        launchStringFlow(settingsRepository.openAiBaseUrl) { copyOpenAi { it.copy(baseUrl = this) } }
-        launchStringFlow(settingsRepository.geminiApiKey) { copyGemini { it.copy(apiKey = this) } }
-        launchStringFlow(settingsRepository.geminiBaseUrl) { copyGemini { it.copy(baseUrl = this) } }
-        launchStringFlow(settingsRepository.customApiKey) { copyCustom { it.copy(apiKey = this) } }
-        launchStringFlow(settingsRepository.customBaseUrl) { copyCustom { it.copy(baseUrl = this) } }
-        launchStringFlow(settingsRepository.customModelName) { copyCustom { it.copy(modelName = this) } }
-        launchStringFlow(settingsRepository.customProviderName) { copyCustom { it.copy(providerName = this) } }
-        launchIntFlow(settingsRepository.chatProvider) { _uiState.update { it.copy(chatProvider = this) } }
-        launchIntFlow(settingsRepository.blueprintProvider) { _uiState.update { it.copy(blueprintProvider = this) } }
+        launchStringFlow(settingsRepository.deepSeekApiKey) { v -> updateState { it.copy(deepSeek = it.deepSeek.copy(apiKey = v)) } }
+        launchStringFlow(settingsRepository.deepSeekBaseUrl) { v -> updateState { it.copy(deepSeek = it.deepSeek.copy(baseUrl = v)) } }
+        launchStringFlow(settingsRepository.claudeApiKey) { v -> updateState { it.copy(claude = it.claude.copy(apiKey = v)) } }
+        launchStringFlow(settingsRepository.claudeBaseUrl) { v -> updateState { it.copy(claude = it.claude.copy(baseUrl = v)) } }
+        launchStringFlow(settingsRepository.openAiApiKey) { v -> updateState { it.copy(openAi = it.openAi.copy(apiKey = v)) } }
+        launchStringFlow(settingsRepository.openAiBaseUrl) { v -> updateState { it.copy(openAi = it.openAi.copy(baseUrl = v)) } }
+        launchStringFlow(settingsRepository.geminiApiKey) { v -> updateState { it.copy(gemini = it.gemini.copy(apiKey = v)) } }
+        launchStringFlow(settingsRepository.geminiBaseUrl) { v -> updateState { it.copy(gemini = it.gemini.copy(baseUrl = v)) } }
+        launchStringFlow(settingsRepository.customApiKey) { v -> updateState { it.copy(custom = it.custom.copy(apiKey = v)) } }
+        launchStringFlow(settingsRepository.customBaseUrl) { v -> updateState { it.copy(custom = it.custom.copy(baseUrl = v)) } }
+        launchStringFlow(settingsRepository.customModelName) { v -> updateState { it.copy(custom = it.custom.copy(modelName = v)) } }
+        launchStringFlow(settingsRepository.customProviderName) { v -> updateState { it.copy(custom = it.custom.copy(providerName = v)) } }
+        launchIntFlow(settingsRepository.chatProvider) { v -> updateState { it.copy(chatProvider = v) } }
+        launchIntFlow(settingsRepository.blueprintProvider) { v -> updateState { it.copy(blueprintProvider = v) } }
     }
 
-    private fun launchStringFlow(flow: Flow<String>, update: suspend String.() -> Unit) {
-        viewModelScope.launch { flow.collect { it.update() } }
+    private inline fun updateState(update: SettingsUiState.() -> SettingsUiState) {
+        _uiState.update(update)
     }
 
-    private fun launchIntFlow(flow: Flow<Int>, update: suspend Int.() -> Unit) {
-        viewModelScope.launch { flow.collect { it.update() } }
+    private fun launchStringFlow(flow: Flow<String>, block: suspend (String) -> Unit) {
+        viewModelScope.launch { flow.collect { block(it) } }
+    }
+
+    private fun launchIntFlow(flow: Flow<Int>, block: suspend (Int) -> Unit) {
+        viewModelScope.launch { flow.collect { block(it) } }
     }
 
     fun selectTab(index: Int) { _uiState.update { it.copy(selectedTab = index) } }
@@ -123,18 +127,6 @@ class SettingsViewModel(
     }
 
     fun clearSavedFlag() { _uiState.update { it.copy(saved = false) } }
-
-    // 辅助方法
-    private fun copyDeepSeek(fn: ProviderConfig.() -> ProviderConfig) =
-        _uiState.update { it.copy(deepSeek = it.deepSeek.fn()) }
-    private fun copyClaude(fn: ProviderConfig.() -> ProviderConfig) =
-        _uiState.update { it.copy(claude = it.claude.fn()) }
-    private fun copyOpenAi(fn: ProviderConfig.() -> ProviderConfig) =
-        _uiState.update { it.copy(openAi = it.openAi.fn()) }
-    private fun copyGemini(fn: ProviderConfig.() -> ProviderConfig) =
-        _uiState.update { it.copy(gemini = it.gemini.fn()) }
-    private fun copyCustom(fn: ProviderConfig.() -> ProviderConfig) =
-        _uiState.update { it.copy(custom = it.custom.fn()) }
 
     class Factory : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
