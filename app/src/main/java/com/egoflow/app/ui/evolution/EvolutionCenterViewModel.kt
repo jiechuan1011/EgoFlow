@@ -139,6 +139,10 @@ class EvolutionCenterViewModel(
         val sb = StringBuilder()
         sb.appendLine("# EgoFlow 月度进化蓝图")
         sb.appendLine()
+        sb.appendLine("> 本周期待实现功能：日常任务自动排程（洗漱/洗衣/搭衣）、对话历史溯源归档。")
+        sb.appendLine()
+        sb.appendLine("---")
+        sb.appendLine()
         sb.appendLine("## 1. 用户驱动功能需求 (User-Driven Features)")
         sb.appendLine()
         val userEntries = _uiState.value.entries.filter {

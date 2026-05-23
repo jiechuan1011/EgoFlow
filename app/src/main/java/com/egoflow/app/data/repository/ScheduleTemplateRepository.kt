@@ -10,6 +10,7 @@ import com.egoflow.app.domain.model.ScheduleTemplateItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.egoflow.app.domain.model.RoutineTask
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -88,6 +89,39 @@ class ScheduleTemplateRepository(private val context: Context) {
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    // ===== 日常任务 =====
+    private val ROUTINE_TOGGLES = stringPreferencesKey("routine_toggles")
+
+    /** 读取各日常任务的开关状态 */
+    val routineToggles: Flow<Map<String, Boolean>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[ROUTINE_TOGGLES] ?: "{}"
+        try {
+            val obj = JSONObject(raw)
+            RoutineTask.PRESETS.associate { it.id to (obj.optBoolean(it.id, true)) }
+        } catch (_: Exception) {
+            RoutineTask.PRESETS.associate { it.id to true }
+        }
+    }
+
+    suspend fun setRoutineToggle(id: String, enabled: Boolean) {
+        val raw = context.dataStore.data.first()[ROUTINE_TOGGLES] ?: "{}"
+        val obj = try { JSONObject(raw) } catch (_: Exception) { JSONObject() }
+        obj.put(id, enabled)
+        context.dataStore.edit { it[ROUTINE_TOGGLES] = obj.toString() }
+    }
+
+    /** 获取当前启用的日常任务列表 */
+    suspend fun getEnabledRoutines(): List<RoutineTask> {
+        val raw = context.dataStore.data.first()[ROUTINE_TOGGLES] ?: "{}"
+        val toggles = try {
+            val obj = JSONObject(raw)
+            RoutineTask.PRESETS.map { it.id to obj.optBoolean(it.id, true) }.toMap()
+        } catch (_: Exception) {
+            RoutineTask.PRESETS.associate { it.id to true }
+        }
+        return RoutineTask.PRESETS.filter { toggles[it.id] != false }
     }
 
     private fun parseItem(obj: JSONObject) = ScheduleTemplateItem(

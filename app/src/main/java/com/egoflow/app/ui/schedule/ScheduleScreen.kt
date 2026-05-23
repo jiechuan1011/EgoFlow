@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.egoflow.app.domain.model.RoutineTask
 import com.egoflow.app.domain.model.ScheduleTemplateItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,67 +112,47 @@ fun ScheduleScreen(
                 .padding(padding)
         ) {
             if (uiState.items.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                // 空状态 + 日常任务
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.School,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = "点击右下角 + 添加课程",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "或点击顶部 📂 导入 ICS 课表文件",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        )
-                    }
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
+                    Spacer(Modifier.height(16.dp))
+                    Text("点击右下角 + 添加课程", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(4.dp))
+                    Text("或点击顶部 📂 导入 ICS 课表文件", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                    Spacer(Modifier.weight(1f))
+                    RoutineTasksSection(uiState, viewModel)
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    for (day in 1..7) {
-                        val dayItems = grouped[day] ?: emptyList()
-                        item {
-                            Text(
-                                text = ScheduleTemplateItem.DAY_LABELS[day - 1],
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                            )
-                        }
-                        if (dayItems.isEmpty()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        for (day in 1..7) {
+                            val dayItems = grouped[day] ?: emptyList()
                             item {
-                                Text(
-                                    text = "  无课程",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
+                                Text(text = ScheduleTemplateItem.DAY_LABELS[day - 1], style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                             }
-                        } else {
-                            items(dayItems, key = { it.id }) { item ->
-                                ScheduleItemCard(
-                                    item = item,
-                                    onDelete = { viewModel.removeItem(item.id) }
-                                )
+                            if (dayItems.isEmpty()) {
+                                item {
+                                    Text(text = "  无课程", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), modifier = Modifier.padding(bottom = 4.dp))
+                                }
+                            } else {
+                                items(dayItems, key = { it.id }) { item ->
+                                    ScheduleItemCard(item = item, onDelete = { viewModel.removeItem(item.id) })
+                                }
                             }
                         }
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
-                    item { Spacer(Modifier.height(80.dp)) }
+                    RoutineTasksSection(uiState, viewModel)
                 }
             }
         }
@@ -233,6 +214,49 @@ private fun ScheduleItemCard(
                     contentDescription = "删除",
                     tint = MaterialTheme.colorScheme.error
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutineTasksSection(
+    uiState: com.egoflow.app.ui.schedule.ScheduleUiState,
+    viewModel: ScheduleViewModel
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Surface(onClick = { expanded = !expanded }, color = androidx.compose.ui.graphics.Color.Transparent) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("日常任务（周循环）", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                RoutineTask.PRESETS.forEach { rt ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = uiState.routineToggles[rt.id] ?: true,
+                            onCheckedChange = { viewModel.toggleRoutine(rt.id, it) }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(rt.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = if (rt.dayOfWeek == 0) "每天 %02d:%02d 共${rt.durationMinutes}分钟".format(rt.startHour, rt.startMinute)
+                                else "${ScheduleTemplateItem.DAY_LABELS[rt.dayOfWeek - 1]} %02d:%02d 共${rt.durationMinutes}分钟".format(rt.startHour, rt.startMinute),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

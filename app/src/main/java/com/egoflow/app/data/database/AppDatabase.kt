@@ -12,9 +12,10 @@ import com.egoflow.app.data.entity.*
         TaskEntity::class,
         EvolutionBacklogEntity::class,
         HardBlockEntity::class,
-        DailyMetricsEntity::class
+        DailyMetricsEntity::class,
+        ChatMessageEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun evolutionBacklogDao(): EvolutionBacklogDao
     abstract fun hardBlockDao(): HardBlockDao
     abstract fun dailyMetricsDao(): DailyMetricsDao
+    abstract fun chatMessageDao(): ChatMessageDao
 
     companion object {
         @Volatile

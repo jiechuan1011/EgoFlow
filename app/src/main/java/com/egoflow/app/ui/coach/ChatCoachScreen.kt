@@ -62,6 +62,11 @@ fun ChatCoachScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { viewModel.toggleHistory() }) {
+                        Icon(Icons.Default.History, contentDescription = "历史")
+                    }
+                },
                 scrollBehavior = scrollBehavior
             )
         },
@@ -107,18 +112,77 @@ fun ChatCoachScreen(
             }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            state = listState,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            items(uiState.messages) { message ->
-                MessageBubble(message)
+        if (uiState.showHistory) {
+            HistoryPanel(
+                uiState = uiState,
+                viewModel = viewModel,
+                modifier = Modifier.padding(padding)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
+                items(uiState.messages) { message ->
+                    MessageBubble(message)
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun HistoryPanel(
+    uiState: CoachUiState,
+    viewModel: ChatCoachViewModel,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Text("对话历史", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+
+        if (uiState.historyDates.isEmpty()) {
+            Text("暂无历史记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        } else {
+            // 日期列表
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(uiState.historyDates) { date ->
+                    val isSelected = date == uiState.selectedDate
+                    Surface(
+                        onClick = { viewModel.selectHistoryDate(date) },
+                        shape = MaterialTheme.shapes.small,
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(date, style = MaterialTheme.typography.bodyMedium, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                            if (isSelected && uiState.historyMessages.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                uiState.historyMessages.takeLast(3).forEach { msg ->
+                                    Text(
+                                        text = if (msg.role == "coach") "🤖 ${msg.content.take(50)}${if (msg.content.length > 50) "..." else ""}"
+                                        else "👤 ${msg.content.take(50)}${if (msg.content.length > 50) "..." else ""}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = { viewModel.toggleHistory() }, modifier = Modifier.fillMaxWidth()) {
+            Text("返回对话")
         }
     }
 }

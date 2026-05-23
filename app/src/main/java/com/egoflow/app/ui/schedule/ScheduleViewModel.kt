@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.egoflow.app.EgoFlowApp
 import com.egoflow.app.data.repository.ScheduleTemplateRepository
 import com.egoflow.app.data.repository.HardBlockRepository
+import com.egoflow.app.domain.model.RoutineTask
 import com.egoflow.app.domain.model.ScheduleTemplateItem
 import com.egoflow.app.util.IcsParser
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,8 @@ data class ScheduleUiState(
     val items: List<ScheduleTemplateItem> = emptyList(),
     val showAddDialog: Boolean = false,
     val saved: Boolean = false,
-    val importResult: String? = null
+    val importResult: String? = null,
+    val routineToggles: Map<String, Boolean> = RoutineTask.PRESETS.associate { it.id to true }
 )
 
 class ScheduleViewModel(
@@ -33,6 +35,11 @@ class ScheduleViewModel(
         viewModelScope.launch {
             templateRepository.templateItems.collect { items ->
                 _uiState.update { it.copy(items = items) }
+            }
+        }
+        viewModelScope.launch {
+            templateRepository.routineToggles.collect { toggles ->
+                _uiState.update { it.copy(routineToggles = toggles) }
             }
         }
     }
@@ -106,24 +113,39 @@ class ScheduleViewModel(
                 val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
                 existing.forEach { hardBlockRepository.deleteBlock(it) }
 
-                // 添加当天有效（按日期区间过滤）的课程
+                // 添加当天有效的课程
                 val weekdayIndex = d + 1 // 1=周一
                 items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }
                     .forEach { item ->
                         val startCal = day.clone() as Calendar
                         startCal.set(Calendar.HOUR_OF_DAY, item.startHour)
                         startCal.set(Calendar.MINUTE, item.startMinute)
-
                         val endCal = day.clone() as Calendar
                         endCal.set(Calendar.HOUR_OF_DAY, item.endHour)
                         endCal.set(Calendar.MINUTE, item.endMinute)
-
-                        hardBlockRepository.addBlock(
-                            subjectName = item.subjectName,
-                            startTime = startCal.timeInMillis,
-                            endTime = endCal.timeInMillis
-                        )
+                        hardBlockRepository.addBlock(subjectName = item.subjectName, startTime = startCal.timeInMillis, endTime = endCal.timeInMillis)
                     }
+
+                // 添加当天启用的日常任务（标记为 ROUTINE，不覆盖课程）
+                val enabledRoutines = templateRepository.getEnabledRoutines()
+                val existingBlockTimes = mutableSetOf<Pair<Long, Long>>()
+                // 先收集已有 hard block 的时间区间，避免冲突
+                for (item in items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }) {
+                    val sc = day.clone() as Calendar; sc.set(Calendar.HOUR_OF_DAY, item.startHour); sc.set(Calendar.MINUTE, item.startMinute)
+                    val ec = day.clone() as Calendar; ec.set(Calendar.HOUR_OF_DAY, item.endHour); ec.set(Calendar.MINUTE, item.endMinute)
+                    existingBlockTimes.add(sc.timeInMillis to ec.timeInMillis)
+                }
+                for (rt in enabledRoutines) {
+                    if (rt.dayOfWeek != 0 && rt.dayOfWeek != weekdayIndex) continue
+                    val sc = day.clone() as Calendar; sc.set(Calendar.HOUR_OF_DAY, rt.startHour); sc.set(Calendar.MINUTE, rt.startMinute)
+                    val ec = day.clone() as Calendar; ec.set(Calendar.HOUR_OF_DAY, rt.startHour + (rt.durationMinutes / 60)); ec.set(Calendar.MINUTE, rt.startMinute + (rt.durationMinutes % 60))
+                    val blockRange = sc.timeInMillis to ec.timeInMillis
+                    // 不与课程冲突才插入
+                    if (existingBlockTimes.none { it.first < blockRange.second && it.second > blockRange.first }) {
+                        hardBlockRepository.addBlock(subjectName = "🔄 ${rt.name}", startTime = sc.timeInMillis, endTime = ec.timeInMillis)
+                        existingBlockTimes.add(blockRange)
+                    }
+                }
             }
             _uiState.update { it.copy(saved = true) }
         }
@@ -157,6 +179,12 @@ class ScheduleViewModel(
 
     fun clearImportResult() {
         _uiState.update { it.copy(importResult = null) }
+    }
+
+    fun toggleRoutine(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            templateRepository.setRoutineToggle(id, enabled)
+        }
     }
 
     fun clearAll() {
