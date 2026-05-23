@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.egoflow.app.EgoFlowApp
+import com.egoflow.app.data.entity.TaskEntity
 import com.egoflow.app.data.repository.HardBlockRepository
 import com.egoflow.app.data.repository.TaskRepository
 import com.egoflow.app.domain.model.EnergyBlock
@@ -22,7 +23,9 @@ data class TimelineUiState(
     val isLoading: Boolean = true,
     val editingBlock: EnergyBlock? = null,
     val pickerHour: Int = 8,
-    val pickerMinute: Int = 0
+    val pickerMinute: Int = 0,
+    val pickerEndHour: Int = 9,
+    val pickerEndMinute: Int = 0
 )
 
 class ScheduleTimelineViewModel(
@@ -75,6 +78,8 @@ class ScheduleTimelineViewModel(
         }
     }
 
+    // ===== 拖拽互换 =====
+
     fun selectDragSource(block: EnergyBlock) {
         _uiState.update { it.copy(dragSource = block, swapTarget = null, swapErrorMessage = null) }
     }
@@ -102,42 +107,75 @@ class ScheduleTimelineViewModel(
     fun clearDragSource() { _uiState.update { it.copy(dragSource = null) } }
     fun clearError() { _uiState.update { it.copy(swapErrorMessage = null) } }
 
-    // ===== 时间编辑 =====
+    // ===== 删除任务块 =====
+
+    fun deleteBlock(block: EnergyBlock) {
+        viewModelScope.launch {
+            if (!block.isHardBlock && block.taskId.isNotBlank()) {
+                taskRepository.updateTaskStatus(block.taskId, "ABANDONED")
+            }
+            // 尝试删除对应的硬墙块
+            val dayStart = block.startTime - 86400_000
+            val dayEnd = block.startTime + 86400_000
+            val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
+            existing.filter { it.id == block.taskId || it.subjectName == block.title }
+                .forEach { hardBlockRepository.deleteBlock(it) }
+            loadSchedule()
+        }
+    }
+
+    // ===== 时间编辑（起止双时间） =====
+
     fun startEditTime(block: EnergyBlock) {
         val cal = Calendar.getInstance()
         cal.timeInMillis = block.startTime
-        _uiState.update { it.copy(editingBlock = block, pickerHour = cal.get(Calendar.HOUR_OF_DAY), pickerMinute = cal.get(Calendar.MINUTE)) }
+        val endCal = Calendar.getInstance()
+        endCal.timeInMillis = block.endTime
+        _uiState.update {
+            it.copy(
+                editingBlock = block,
+                pickerHour = cal.get(Calendar.HOUR_OF_DAY),
+                pickerMinute = cal.get(Calendar.MINUTE),
+                pickerEndHour = endCal.get(Calendar.HOUR_OF_DAY),
+                pickerEndMinute = endCal.get(Calendar.MINUTE)
+            )
+        }
     }
 
     fun cancelEdit() { _uiState.update { it.copy(editingBlock = null) } }
 
-    fun updatePickerTime(hour: Int, minute: Int) { _uiState.update { it.copy(pickerHour = hour, pickerMinute = minute) } }
-
-    fun rescheduleBlock(hour: Int, minute: Int) {
+    fun rescheduleBlock(
+        startHour: Int, startMinute: Int,
+        endHour: Int, endMinute: Int
+    ) {
         val block = _uiState.value.editingBlock ?: return
         viewModelScope.launch {
             val cal = Calendar.getInstance()
-            cal.set(Calendar.HOUR_OF_DAY, hour)
-            cal.set(Calendar.MINUTE, minute)
+            cal.set(Calendar.HOUR_OF_DAY, startHour)
+            cal.set(Calendar.MINUTE, startMinute)
             cal.set(Calendar.SECOND, 0)
             cal.set(Calendar.MILLISECOND, 0)
             val newStart = cal.timeInMillis
-            val duration = block.endTime - block.startTime
-            val newEnd = newStart + duration
+            val endCal = Calendar.getInstance()
+            endCal.set(Calendar.HOUR_OF_DAY, endHour)
+            endCal.set(Calendar.MINUTE, endMinute)
+            endCal.set(Calendar.SECOND, 0)
+            endCal.set(Calendar.MILLISECOND, 0)
+            val newEnd = endCal.timeInMillis
 
-            // 1. 如果是任务块，将原任务标记为 SCHEDULED 防止重复调度
+            // 如果是任务块，将原任务标记为 SCHEDULED 防止重复调度
             if (!block.isHardBlock && block.taskId.isNotBlank()) {
                 taskRepository.updateTaskStatus(block.taskId, "SCHEDULED")
             }
 
-            // 2. 删除旧的 hard block（按 taskId 或标题匹配）
+            // 删除旧的 hard block
             val dayStart = newStart - 86400_000
             val dayEnd = newStart + 86400_000
             val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
             existing.filter { it.id == block.taskId || it.subjectName == block.title }
                 .forEach { hardBlockRepository.deleteBlock(it) }
 
-            // 3. 创建新的硬墙块
+            // 创建新硬墙块
             hardBlockRepository.addBlock(
                 subjectName = block.title,
                 startTime = newStart,
@@ -148,6 +186,26 @@ class ScheduleTimelineViewModel(
             loadSchedule()
         }
     }
+
+    // ===== 支线 TodoList =====
+
+    fun toggleSubLineTask(taskId: String) {
+        viewModelScope.launch {
+            val task = taskRepository.getTaskById(taskId) ?: return@launch
+            val newStatus = if (task.status == "DONE") "POOL" else "DONE"
+            taskRepository.updateTaskStatus(taskId, newStatus)
+            loadSchedule()
+        }
+    }
+
+    fun deleteSubLineTask(taskId: String) {
+        viewModelScope.launch {
+            taskRepository.getTaskById(taskId)?.let { taskRepository.deleteTask(it) }
+            loadSchedule()
+        }
+    }
+
+    // ===== 工具方法 =====
 
     private fun getDayStartMillis(): Long {
         val cal = Calendar.getInstance()

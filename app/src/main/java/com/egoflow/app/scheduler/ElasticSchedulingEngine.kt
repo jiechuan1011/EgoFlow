@@ -94,7 +94,7 @@ class ElasticSchedulingEngine {
         val mainLineTasks = tasks
             .filter { it.category == "MAIN_LINE" && it.status == "POOL" }
             .sortedByDescending { it.drainLevel == "HIGH" }
-        val subLineTasks = tasks
+        val subLinePoolTasks = tasks
             .filter { it.category == "SUB_LINE" && it.status == "POOL" }
 
         // Step 3: 确定可用时段
@@ -131,50 +131,16 @@ class ElasticSchedulingEngine {
             }
         }
 
-        // Step 5: 主线完成后，用剩余空闲时段安排支线任务
-        val totalMainLine = completedMainLineMinutes + mainLineScheduled
-        // 按主线时间占比动态计算支线配额
-        val subLineQuota = if (totalMainLine > 0)
-            (totalMainLine * config.subLineRatio / (1f - config.subLineRatio)).toInt()
-        else
-            120 // 无主线时默认给 120 分钟
-
-        var subLineUsed = 0
-        for (task in subLineTasks) {
-            if (freeSlots.isEmpty()) break
-            if (subLineUsed >= subLineQuota) break
-            if (totalDailyMinutes + task.estimatedMinutes > config.maxDailyMinutes) break
-            val slot = freeSlots.firstOrNull { (it.end - it.start) >= task.estimatedMinutes * 60_000L }
-            if (slot != null) {
-                val blockEnd = minOf(slot.end, slot.start + task.estimatedMinutes * 60_000L)
-                if (blockEnd - slot.start >= 15 * 60_000) {
-                    insertBreakBefore(blocks, slot.start, totalDailyMinutes, config)
-
-                    blocks.add(EnergyBlock(
-                        id = UUID.randomUUID().toString(),
-                        title = task.title,
-                        taskId = task.id,
-                        category = task.category,
-                        drainLevel = task.drainLevel,
-                        startTime = slot.start,
-                        endTime = blockEnd
-                    ))
-                    subLineUsed += task.estimatedMinutes
-                    totalDailyMinutes += task.estimatedMinutes
-                    adjustFreeSlot(freeSlots, slot.start, blockEnd, config.highDrainBufferMinutes)
-                }
-            }
-        }
-
-        // 按时间排序
+        // Step 5: 按时间排序
         blocks.sortBy { it.startTime }
 
         return SchedulePlan(
             dateStr = dateStr,
             energyBlocks = blocks,
             totalMainLineMinutes = mainLineScheduled,
-            totalSubLineMinutes = subLineUsed,
-            unlockedRewardMinutes = subLineUsed
+            totalSubLineMinutes = 0,
+            unlockedRewardMinutes = 0,
+            subLineTasks = subLinePoolTasks
         )
     }
 
