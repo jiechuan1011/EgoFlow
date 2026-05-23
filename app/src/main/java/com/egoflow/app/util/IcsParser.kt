@@ -28,7 +28,8 @@ object IcsParser {
     data class RRule(
         val freq: String,       // WEEKLY, DAILY, etc.
         val byDay: List<Int>,   // 1=Mon ... 7=Sun
-        val interval: Int = 1
+        val interval: Int = 1,
+        val until: Long? = null // UNTIL 时间戳（毫秒）
     )
 
     /**
@@ -42,8 +43,11 @@ object IcsParser {
             val rrule = event.rrule
             val days = mutableListOf<Int>()
 
+            // 计算有效日期范围
+            val validFrom = normalizeToDayStart(event.dtStart.timeInMillis)
+            val validUntil = rrule?.until   // RRULE 的 UNTIL
+
             if (rrule != null && rrule.freq == "WEEKLY") {
-                // 优先用 BYDAY，没有则从 DTSTART 推算星期
                 if (rrule.byDay.isNotEmpty()) {
                     days.addAll(rrule.byDay)
                 } else {
@@ -51,7 +55,6 @@ object IcsParser {
                 }
                 days.sort()
             } else {
-                // 单次事件
                 dtStartToOurDay(event.dtStart)?.let { days.add(it) }
             }
 
@@ -64,14 +67,26 @@ object IcsParser {
                         startHour = event.dtStart.get(Calendar.HOUR_OF_DAY),
                         startMinute = event.dtStart.get(Calendar.MINUTE),
                         endHour = event.dtEnd.get(Calendar.HOUR_OF_DAY),
-                        endMinute = event.dtEnd.get(Calendar.MINUTE)
+                        endMinute = event.dtEnd.get(Calendar.MINUTE),
+                        validFrom = validFrom,
+                        validUntil = validUntil
                     )
                 )
             }
         }
 
-        // 去重：相同课程名 + 星期 + 开始时间 → 只保留一个
-        return items.distinctBy { Triple(it.subjectName, it.dayOfWeek, it.startHour * 100 + it.startMinute) }
+        return items
+    }
+
+    /** 将时间戳归零到当天 00:00 */
+    private fun normalizeToDayStart(millis: Long): Long {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = millis
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
     }
 
     /** 将 Calendar.DAY_OF_WEEK 转为我们的 1=周一 … 7=周日 */
@@ -224,7 +239,6 @@ object IcsParser {
         val byDay = mutableListOf<Int>()
         params["BYDAY"]?.let { daysStr ->
             daysStr.split(",").forEach { day ->
-                // 可能带前缀数字如 "1MO" 表示第1周
                 val code = day.trim().takeLast(2).uppercase()
                 ICS_DAY_MAP[code]?.let { byDay.add(it) }
             }
@@ -232,10 +246,31 @@ object IcsParser {
 
         val interval = params["INTERVAL"]?.toIntOrNull() ?: 1
 
+        // 解析 UNTIL（格式同 DTSTART: 20260607T160000Z）
+        val until = params["UNTIL"]?.let { parseDateTimeEndOfDay(it) }
+
         return RRule(
             freq = freq,
-            byDay = if (byDay.isNotEmpty()) byDay else listOf(1, 2, 3, 4, 5), // 默认周一到周五
-            interval = interval
+            byDay = if (byDay.isNotEmpty()) byDay else listOf(1, 2, 3, 4, 5),
+            interval = interval,
+            until = until
         )
+    }
+
+    /** 解析 UNTIL 日期为当天 23:59 的时间戳 */
+    private fun parseDateTimeEndOfDay(raw: String): Long? {
+        val clean = raw.trimEnd('Z')
+        if (clean.length < 8) return null
+        return try {
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.YEAR, clean.substring(0, 4).toInt())
+            cal.set(Calendar.MONTH, clean.substring(4, 6).toInt() - 1)
+            cal.set(Calendar.DAY_OF_MONTH, clean.substring(6, 8).toInt())
+            cal.set(Calendar.HOUR_OF_DAY, if (clean.length >= 15) clean.substring(9, 11).toInt() else 23)
+            cal.set(Calendar.MINUTE, if (clean.length >= 15) clean.substring(11, 13).toInt() else 59)
+            cal.set(Calendar.SECOND, if (clean.length >= 15) clean.substring(13, 15).toInt() else 59)
+            cal.set(Calendar.MILLISECOND, 999)
+            cal.timeInMillis
+        } catch (_: Exception) { null }
     }
 }

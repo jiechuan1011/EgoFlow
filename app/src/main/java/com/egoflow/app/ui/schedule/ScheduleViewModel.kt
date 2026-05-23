@@ -72,14 +72,12 @@ class ScheduleViewModel(
         }
     }
 
-    /** 将模板生成为本周的 HardBlock */
+    /** 将模板生成为本周的 HardBlock（只取当周有效课程） */
     fun generateThisWeek() {
         viewModelScope.launch {
             val items = templateRepository.getAllItems()
             val today = Calendar.getInstance()
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
-            // Calendar.SUNDAY=1, MONDAY=2, ... SATURDAY=7
-            // Our model: 1=周一, ... 7=周日
             val mondayOffset = when (dayOfWeek) {
                 Calendar.SUNDAY -> -6
                 Calendar.MONDAY -> 0
@@ -102,28 +100,30 @@ class ScheduleViewModel(
                 val day = monday.clone() as Calendar
                 day.add(Calendar.DAY_OF_MONTH, d)
                 val dayStart = day.timeInMillis
+                val dayEnd = dayStart + 86400_000
 
                 // 先删除当天的旧 hard blocks
-                val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayStart + 86400_000)
+                val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
                 existing.forEach { hardBlockRepository.deleteBlock(it) }
 
-                // 添加当天的模板项
+                // 添加当天有效（按日期区间过滤）的课程
                 val weekdayIndex = d + 1 // 1=周一
-                items.filter { it.dayOfWeek == weekdayIndex }.forEach { item ->
-                    val startCal = day.clone() as Calendar
-                    startCal.set(Calendar.HOUR_OF_DAY, item.startHour)
-                    startCal.set(Calendar.MINUTE, item.startMinute)
+                items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }
+                    .forEach { item ->
+                        val startCal = day.clone() as Calendar
+                        startCal.set(Calendar.HOUR_OF_DAY, item.startHour)
+                        startCal.set(Calendar.MINUTE, item.startMinute)
 
-                    val endCal = day.clone() as Calendar
-                    endCal.set(Calendar.HOUR_OF_DAY, item.endHour)
-                    endCal.set(Calendar.MINUTE, item.endMinute)
+                        val endCal = day.clone() as Calendar
+                        endCal.set(Calendar.HOUR_OF_DAY, item.endHour)
+                        endCal.set(Calendar.MINUTE, item.endMinute)
 
-                    hardBlockRepository.addBlock(
-                        subjectName = item.subjectName,
-                        startTime = startCal.timeInMillis,
-                        endTime = endCal.timeInMillis
-                    )
-                }
+                        hardBlockRepository.addBlock(
+                            subjectName = item.subjectName,
+                            startTime = startCal.timeInMillis,
+                            endTime = endCal.timeInMillis
+                        )
+                    }
             }
             _uiState.update { it.copy(saved = true) }
         }
