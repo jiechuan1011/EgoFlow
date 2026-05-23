@@ -9,11 +9,17 @@ import com.egoflow.app.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+data class ProviderConfig(
+    val apiKey: String = "",
+    val baseUrl: String = ""
+)
+
 data class SettingsUiState(
-    val deepSeekApiKey: String = "",
-    val claudeApiKey: String = "",
-    val deepSeekBaseUrl: String = "https://api.deepseek.com",
-    val claudeBaseUrl: String = "https://api.anthropic.com",
+    val selectedTab: Int = 0,
+    val deepSeek: ProviderConfig = ProviderConfig(baseUrl = "https://api.deepseek.com"),
+    val claude: ProviderConfig = ProviderConfig(baseUrl = "https://api.anthropic.com"),
+    val openAi: ProviderConfig = ProviderConfig(baseUrl = "https://api.openai.com"),
+    val gemini: ProviderConfig = ProviderConfig(baseUrl = "https://generativelanguage.googleapis.com"),
     val saved: Boolean = false
 )
 
@@ -25,69 +31,54 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            settingsRepository.deepSeekApiKey.collect { key ->
-                _uiState.update { it.copy(deepSeekApiKey = key) }
-            }
-        }
-        viewModelScope.launch {
-            settingsRepository.claudeApiKey.collect { key ->
-                _uiState.update { it.copy(claudeApiKey = key) }
-            }
-        }
-        viewModelScope.launch {
-            settingsRepository.deepSeekBaseUrl.collect { url ->
-                _uiState.update { it.copy(deepSeekBaseUrl = url) }
-            }
-        }
-        viewModelScope.launch {
-            settingsRepository.claudeBaseUrl.collect { url ->
-                _uiState.update { it.copy(claudeBaseUrl = url) }
-            }
+        listOf(
+            settingsRepository.deepSeekApiKey to { v: String -> _uiState.update { it.copy(deepSeek = it.deepSeek.copy(apiKey = v)) } },
+            settingsRepository.deepSeekBaseUrl to { v: String -> _uiState.update { it.copy(deepSeek = it.deepSeek.copy(baseUrl = v)) } },
+            settingsRepository.claudeApiKey to { v: String -> _uiState.update { it.copy(claude = it.claude.copy(apiKey = v)) } },
+            settingsRepository.claudeBaseUrl to { v: String -> _uiState.update { it.copy(claude = it.claude.copy(baseUrl = v)) } },
+            settingsRepository.openAiApiKey to { v: String -> _uiState.update { it.copy(openAi = it.openAi.copy(apiKey = v)) } },
+            settingsRepository.openAiBaseUrl to { v: String -> _uiState.update { it.copy(openAi = it.openAi.copy(baseUrl = v)) } },
+            settingsRepository.geminiApiKey to { v: String -> _uiState.update { it.copy(gemini = it.gemini.copy(apiKey = v)) } },
+            settingsRepository.geminiBaseUrl to { v: String -> _uiState.update { it.copy(gemini = it.gemini.copy(baseUrl = v)) } }
+        ).forEach { (flow, update) ->
+            viewModelScope.launch { flow.collect { update(it) } }
         }
     }
 
-    fun updateDeepSeekKey(key: String) {
+    fun selectTab(index: Int) { _uiState.update { it.copy(selectedTab = index) } }
+
+    fun updateApiKey(key: String) {
+        val tab = _uiState.value.selectedTab
         viewModelScope.launch {
-            settingsRepository.saveDeepSeekApiKey(key)
-            AiConfig.deepSeekApiKey = key
+            when (tab) {
+                0 -> { settingsRepository.saveDeepSeekKey(key); AiConfig.deepSeekApiKey = key }
+                1 -> { settingsRepository.saveClaudeKey(key); AiConfig.claudeApiKey = key }
+                2 -> { settingsRepository.saveOpenAiKey(key); AiConfig.openAiApiKey = key }
+                3 -> { settingsRepository.saveGeminiKey(key); AiConfig.geminiApiKey = key }
+            }
             _uiState.update { it.copy(saved = true) }
         }
     }
 
-    fun updateClaudeKey(key: String) {
+    fun updateBaseUrl(url: String) {
+        val tab = _uiState.value.selectedTab
         viewModelScope.launch {
-            settingsRepository.saveClaudeApiKey(key)
-            AiConfig.claudeApiKey = key
+            when (tab) {
+                0 -> { settingsRepository.saveDeepSeekUrl(url); AiConfig.deepSeekBaseUrl = url }
+                1 -> { settingsRepository.saveClaudeUrl(url); AiConfig.claudeBaseUrl = url }
+                2 -> { settingsRepository.saveOpenAiUrl(url); AiConfig.openAiBaseUrl = url }
+                3 -> { settingsRepository.saveGeminiUrl(url); AiConfig.geminiBaseUrl = url }
+            }
             _uiState.update { it.copy(saved = true) }
         }
     }
 
-    fun updateDeepSeekUrl(url: String) {
-        viewModelScope.launch {
-            settingsRepository.saveDeepSeekBaseUrl(url)
-            AiConfig.deepSeekBaseUrl = url
-            _uiState.update { it.copy(saved = true) }
-        }
-    }
-
-    fun updateClaudeUrl(url: String) {
-        viewModelScope.launch {
-            settingsRepository.saveClaudeBaseUrl(url)
-            AiConfig.claudeBaseUrl = url
-            _uiState.update { it.copy(saved = true) }
-        }
-    }
-
-    fun clearSavedFlag() {
-        _uiState.update { it.copy(saved = false) }
-    }
+    fun clearSavedFlag() { _uiState.update { it.copy(saved = false) } }
 
     class Factory : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val app = EgoFlowApp.instance
-            return SettingsViewModel(app.settingsRepository) as T
+            return SettingsViewModel(EgoFlowApp.instance.settingsRepository) as T
         }
     }
 }

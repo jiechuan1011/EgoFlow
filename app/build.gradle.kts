@@ -51,7 +51,18 @@ android {
     }
 
     signingConfigs {
-        // 仅在 keystore 存在时创建 release 签名配置
+        // 项目内统一开发签名（解决 CI 每次构建签名不一致的问题）
+        val devKeystore = rootProject.file("app/egoflow_dev.keystore")
+        if (devKeystore.exists()) {
+            create("dev") {
+                storeFile = devKeystore
+                storePassword = "egoflow_dev"
+                keyAlias = "egoflow_dev"
+                keyPassword = "egoflow_dev"
+            }
+        }
+
+        // CI 或本地可选的 release 签名（通过环境变量或 keystore.properties）
         val releaseStoreFile = if (ciStoreFile != null && ciStoreFile.isNotEmpty()) {
             if (ciStoreFile.startsWith("/") || ciStoreFile.contains(":")) {
                 file(ciStoreFile)
@@ -76,15 +87,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 如果有 release 签名配置则使用，否则回退到 debug 签名
-            if (signingConfigs.findByName("release") != null) {
-                signingConfig = signingConfigs.getByName("release")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
+            // 优先级: dev(统一) > release(CI) > debug(默认)
+            signingConfig = when {
+                signingConfigs.findByName("dev") != null -> signingConfigs.getByName("dev")
+                signingConfigs.findByName("release") != null -> signingConfigs.getByName("release")
+                else -> signingConfigs.getByName("debug")
             }
         }
         debug {
-            // debug 使用 Android Studio 的默认 debug 签名
+            // debug 使用同 dev 签名，确保一致性
+            if (signingConfigs.findByName("dev") != null) {
+                signingConfig = signingConfigs.getByName("dev")
+            }
         }
     }
 

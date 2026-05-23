@@ -39,10 +39,12 @@ fun FocusFirewallScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("EgoFlow", fontWeight = FontWeight.Bold) },
+                title = { Text("EgoFlow", fontWeight = FontWeight.Bold, maxLines = 1) },
                 actions = {
                     IconButton(onClick = onNavigateToTimeline) {
                         Icon(Icons.Default.CalendarMonth, contentDescription = "日程")
@@ -53,14 +55,30 @@ fun FocusFirewallScreen(
                     IconButton(onClick = onNavigateToEvolution) {
                         Icon(Icons.Default.AutoGraph, contentDescription = "进化")
                     }
-                    IconButton(onClick = { viewModel.toggleTaskPool() }) {
-                        Icon(Icons.Default.List, contentDescription = "任务池")
-                    }
-                    IconButton(onClick = onNavigateToSchedule) {
-                        Icon(Icons.Default.DateRange, contentDescription = "课程表")
-                    }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("任务池") },
+                                onClick = { showOverflowMenu = false; viewModel.toggleTaskPool() },
+                                leadingIcon = { Icon(Icons.Default.List, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("课程表") },
+                                onClick = { showOverflowMenu = false; onNavigateToSchedule() },
+                                leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("设置") },
+                                onClick = { showOverflowMenu = false; onNavigateToSettings() },
+                                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

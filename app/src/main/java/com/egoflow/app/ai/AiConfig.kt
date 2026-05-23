@@ -8,13 +8,17 @@ object AiConfig {
     var deepSeekBaseUrl: String = "https://api.deepseek.com"
     var claudeApiKey: String = ""
     var claudeBaseUrl: String = "https://api.anthropic.com"
+    var openAiApiKey: String = ""
+    var openAiBaseUrl: String = "https://api.openai.com"
+    var geminiApiKey: String = ""
+    var geminiBaseUrl: String = "https://generativelanguage.googleapis.com"
 
-    // DeepSeek 模型
+    // 模型常量
     const val DEEPSEEK_CHAT_MODEL = "deepseek-chat"
     const val DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"
-
-    // Claude 模型
-    const val CLAUDE_MODEL = "claude-3-sonnet-20241022"
+    const val CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
+    const val OPENAI_MODEL = "gpt-4o"
+    const val GEMINI_MODEL = "gemini-2.0-flash"
 
     // 系统提示词
     const val COACH_SYSTEM_PROMPT = """你是 EgoFlow 系统的 AI 教练。你的核心职责：

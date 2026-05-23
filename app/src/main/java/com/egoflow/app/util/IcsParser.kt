@@ -40,55 +40,52 @@ object IcsParser {
 
         for (event in events) {
             val rrule = event.rrule
+            val days = mutableListOf<Int>()
 
             if (rrule != null && rrule.freq == "WEEKLY") {
-                // 周重复事件：为每个 BYDAY 创建一个条目
-                val days = rrule.byDay
-                if (days.isNotEmpty()) {
-                    for (day in days) {
-                        items.add(
-                            ScheduleTemplateItem(
-                                id = UUID.randomUUID().toString(),
-                                subjectName = event.summary,
-                                dayOfWeek = day,
-                                startHour = event.dtStart.get(Calendar.HOUR_OF_DAY),
-                                startMinute = event.dtStart.get(Calendar.MINUTE),
-                                endHour = event.dtEnd.get(Calendar.HOUR_OF_DAY),
-                                endMinute = event.dtEnd.get(Calendar.MINUTE)
-                            )
-                        )
-                    }
+                // 优先用 BYDAY，没有则从 DTSTART 推算星期
+                if (rrule.byDay.isNotEmpty()) {
+                    days.addAll(rrule.byDay)
+                } else {
+                    dtStartToOurDay(event.dtStart)?.let { days.add(it) }
                 }
+                days.sort()
             } else {
-                // 单次事件：提取时间，推断星期
-                val dayOfWeek = event.dtStart.get(Calendar.DAY_OF_WEEK)
-                // Calendar: SU=1, MO=2 ... SA=7 → 我们的模型: MO=1 ... SU=7
-                val ourDay = when (dayOfWeek) {
-                    Calendar.MONDAY -> 1
-                    Calendar.TUESDAY -> 2
-                    Calendar.WEDNESDAY -> 3
-                    Calendar.THURSDAY -> 4
-                    Calendar.FRIDAY -> 5
-                    Calendar.SATURDAY -> 6
-                    Calendar.SUNDAY -> 7
-                    else -> null
-                }
-                if (ourDay != null) {
-                    items.add(
-                        ScheduleTemplateItem(
-                            id = UUID.randomUUID().toString(),
-                            subjectName = event.summary,
-                            dayOfWeek = ourDay,
-                            startHour = event.dtStart.get(Calendar.HOUR_OF_DAY),
-                            startMinute = event.dtStart.get(Calendar.MINUTE),
-                            endHour = event.dtEnd.get(Calendar.HOUR_OF_DAY),
-                            endMinute = event.dtEnd.get(Calendar.MINUTE)
-                        )
+                // 单次事件
+                dtStartToOurDay(event.dtStart)?.let { days.add(it) }
+            }
+
+            for (day in days) {
+                items.add(
+                    ScheduleTemplateItem(
+                        id = UUID.randomUUID().toString(),
+                        subjectName = event.summary,
+                        dayOfWeek = day,
+                        startHour = event.dtStart.get(Calendar.HOUR_OF_DAY),
+                        startMinute = event.dtStart.get(Calendar.MINUTE),
+                        endHour = event.dtEnd.get(Calendar.HOUR_OF_DAY),
+                        endMinute = event.dtEnd.get(Calendar.MINUTE)
                     )
-                }
+                )
             }
         }
-        return items
+
+        // 去重：相同课程名 + 星期 + 开始时间 → 只保留一个
+        return items.distinctBy { Triple(it.subjectName, it.dayOfWeek, it.startHour * 100 + it.startMinute) }
+    }
+
+    /** 将 Calendar.DAY_OF_WEEK 转为我们的 1=周一 … 7=周日 */
+    private fun dtStartToOurDay(cal: Calendar): Int? {
+        return when (cal.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> 1
+            Calendar.TUESDAY -> 2
+            Calendar.WEDNESDAY -> 3
+            Calendar.THURSDAY -> 4
+            Calendar.FRIDAY -> 5
+            Calendar.SATURDAY -> 6
+            Calendar.SUNDAY -> 7
+            else -> null
+        }
     }
 
     /**
@@ -98,9 +95,13 @@ object IcsParser {
         val unfolded = unfoldLines(icsContent)
         val events = mutableListOf<IcsEvent>()
 
-        // 按 BEGIN:VEVENT ... END:VEVENT 分割
-        val veventRegex = Regex("BEGIN:VEVENT\\s*\\n(.*?)\\nEND:VEVENT", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-        val matches = veventRegex.findAll(unfolded)
+        // 按 BEGIN:VEVENT ... END:VEVENT 分割（兼容 CRLF / LF）
+        val normalized = unfolded.replace("\r\n", "\n")
+        val veventRegex = Regex(
+            "BEGIN:VEVENT\\s*\\n(.*?)\\nEND:VEVENT",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
+        val matches = veventRegex.findAll(normalized)
 
         for (match in matches) {
             val block = match.groupValues[1]
@@ -120,8 +121,9 @@ object IcsParser {
      * ICS 行折叠：以空格或 tab 开头的行是上一行的延续
      */
     private fun unfoldLines(text: String): String {
-        return text.lines()
-            .joinToString("\n") { line ->
+        return text.replace("\r\n", "\n")
+            .lines()
+            .joinToString("") { line ->
                 if (line.startsWith(" ") || line.startsWith("\t")) {
                     line.trimStart()
                 } else {

@@ -72,8 +72,12 @@ class EgoFlowApp : Application() {
             appScope.launch {
                 AiConfig.deepSeekApiKey = settingsRepository.deepSeekApiKey.first()
                 AiConfig.claudeApiKey = settingsRepository.claudeApiKey.first()
+                AiConfig.openAiApiKey = settingsRepository.openAiApiKey.first()
+                AiConfig.geminiApiKey = settingsRepository.geminiApiKey.first()
                 AiConfig.deepSeekBaseUrl = settingsRepository.deepSeekBaseUrl.first()
                 AiConfig.claudeBaseUrl = settingsRepository.claudeBaseUrl.first()
+                AiConfig.openAiBaseUrl = settingsRepository.openAiBaseUrl.first()
+                AiConfig.geminiBaseUrl = settingsRepository.geminiBaseUrl.first()
                 Log.d("EgoFlowInit", "Settings loaded from DataStore")
             }
 
