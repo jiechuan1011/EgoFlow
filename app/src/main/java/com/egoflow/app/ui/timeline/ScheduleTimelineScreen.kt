@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,11 +18,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.egoflow.app.domain.model.EnergyBlock
 import com.egoflow.app.ui.theme.*
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -189,7 +192,7 @@ fun ScheduleTimelineScreen(
         }
     }
 
-    // 时间编辑对话框
+    // 时间编辑对话框 — 双滚轮时间选择器
     uiState.editingBlock?.let { block ->
         var hour by remember { mutableIntStateOf(uiState.pickerHour) }
         var minute by remember { mutableIntStateOf(uiState.pickerMinute) }
@@ -197,24 +200,141 @@ fun ScheduleTimelineScreen(
             onDismissRequest = { viewModel.cancelEdit() },
             title = { Text("修改「${block.title}」时间") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("小时", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        (6..23).forEach { h ->
-                            FilterChip(selected = hour == h, onClick = { hour = h }, label = { Text("%02d".format(h)) })
-                        }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        NumberWheel(
+                            range = 0..23,
+                            initialValue = hour,
+                            onValueChanged = { hour = it },
+                            modifier = Modifier.width(72.dp)
+                        )
+                        Text(
+                            ":",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        NumberWheel(
+                            range = 0..59,
+                            initialValue = minute,
+                            onValueChanged = { minute = it },
+                            modifier = Modifier.width(72.dp)
+                        )
                     }
-                    Text("分钟", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf(0, 15, 30, 45).forEach { m ->
-                            FilterChip(selected = minute == m, onClick = { minute = m }, label = { Text("%02d".format(m)) })
-                        }
-                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "上下滑动选择时间",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
                 }
             },
             confirmButton = { Button(onClick = { viewModel.rescheduleBlock(hour, minute) }) { Text("确认") } },
             dismissButton = { TextButton(onClick = { viewModel.cancelEdit() }) { Text("取消") } }
         )
+    }
+}
+
+/**
+ * 数字滚轮选择器
+ *
+ * 上下滑动选择数字，中间行高亮为选中项
+ * 高度固定显示约5行，选中项在中间
+ */
+@Composable
+private fun NumberWheel(
+    range: IntRange,
+    initialValue: Int,
+    onValueChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val itemHeightDp: Dp = 40.dp
+    val itemHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { itemHeightDp.toPx() }
+    val visibleItems = 5
+    val totalHeight = itemHeightDp * visibleItems
+
+    // 计算初始 index
+    val initialIndex = (range.indexOf(initialValue).coerceAtLeast(0))
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialIndex,
+        initialFirstVisibleItemOffset = 0
+    )
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // 计算居中项（响应式，用于UI高亮）
+    val selectedIndex by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                val center = layoutInfo.viewportEndOffset / 2
+                val closest = layoutInfo.visibleItemsInfo.minByOrNull {
+                    kotlin.math.abs(it.offset + it.size / 2 - center)
+                }
+                closest?.index?.coerceIn(0, range.last) ?: initialIndex
+            } else initialIndex
+        }
+    }
+
+    // 回调通知外部
+    LaunchedEffect(selectedIndex) {
+        val value = range.elementAtOrNull(selectedIndex) ?: initialValue
+        onValueChanged(value)
+    }
+
+    Box(
+        modifier = modifier.height(totalHeight),
+        contentAlignment = Alignment.Center
+    ) {
+        // 中间选中区域高亮背景
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(itemHeightDp)
+                .background(
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    RoundedCornerShape(8.dp)
+                )
+        )
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                vertical = (totalHeight - itemHeightDp) / 2
+            )
+        ) {
+            itemsIndexed(range.toList()) { index, value ->
+                val isCenter = index == selectedIndex
+                Text(
+                    text = "%02d".format(value),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(itemHeightDp)
+                        .clickable {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index)
+                            }
+                        },
+                    textAlign = TextAlign.Center,
+                    fontWeight = if (isCenter) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = if (isCenter) androidx.compose.ui.unit.sp(22) else androidx.compose.ui.unit.sp(16),
+                    color = if (isCenter)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            }
+        }
     }
 }
 
@@ -358,11 +478,12 @@ private fun TimelineBlockCard(
                 }
             }
 
-            // 时间编辑 + 操作指示
+            // 时间编辑按钮（所有块都可见，硬墙块也可修改时间）
+            IconButton(onClick = { onEdit(block) }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Schedule, contentDescription = "修改时间", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+            }
+            // 拖拽互换（仅非硬墙块）
             if (!block.isHardBlock) {
-                IconButton(onClick = { onEdit(block) }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Schedule, contentDescription = "修改时间", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
-                }
                 Icon(
                     imageVector = if (isSourceMode) Icons.Default.SwapHoriz else Icons.Default.DragHandle,
                     contentDescription = if (isSourceMode) "点击互换" else "选择以调换",

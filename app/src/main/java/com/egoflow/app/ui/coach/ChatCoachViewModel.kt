@@ -283,13 +283,12 @@ class ChatCoachViewModel(
                     // 解析并生成日程
                     val blocksArray = json.optJSONArray("blocks")
                     var createdCount = 0
+                    var scheduleSummary = StringBuilder()
                     if (blocksArray != null) {
                         for (i in 0 until blocksArray.length()) {
                             val block = blocksArray.getJSONObject(i)
                             val title = block.getString("title")
                             val category = block.optString("category", "MAIN_LINE")
-                            val drainLevel = if (category == "MAIN_LINE") "HIGH" else "LOW"
-                            // 解析时间
                             val startStr = block.optString("start", "09:00")
                             val endStr = block.optString("end", "10:00")
                             val startParts = startStr.split(":")
@@ -300,6 +299,13 @@ class ChatCoachViewModel(
                             val endMinute = endParts.getOrNull(1)?.toIntOrNull() ?: 0
                             val estimatedMinutes = (endHour - startHour) * 60 + (endMinute - startMinute)
 
+                            // 休息块跳过，不作为任务创建
+                            if (category == "BREAK" || title.contains("休息")) {
+                                scheduleSummary.append("  $startStr-$endStr ☕ 休息\n")
+                                continue
+                            }
+
+                            val drainLevel = if (category == "MAIN_LINE") "HIGH" else "LOW"
                             taskRepository.createTask(
                                 title = title,
                                 category = category,
@@ -307,9 +313,10 @@ class ChatCoachViewModel(
                                 estimatedMinutes = estimatedMinutes
                             )
                             createdCount++
+                            scheduleSummary.append("  $startStr-$endStr $title\n")
                         }
                     }
-                    addCoachMessage("已生成日程：共 ${createdCount} 个任务。前往「日程时间线」查看详情。")
+                    addCoachMessage("📋 已生成今日日程（共 $createdCount 个任务）：\n${scheduleSummary.toString()}\n前往「日程时间线」查看详情。")
                 }
                 else -> {
                     addCoachMessage("已收到指令，但暂不支持该操作类型。")
@@ -358,10 +365,18 @@ class ChatCoachViewModel(
 4. 【结构化输出】当任务要素充足时，只输出纯 JSON，不要解释
 5. 【进化拦截】如果用户抱怨 App 功能或提出新需求，标记为 EVOLUTION 类型
 
-【交互式日程规划】当用户要求规划日程时：
+【交互式日程规划 — 必须遵守】
+当用户要求规划日程时，必须使用 ask_options 格式进行卡片式追问：
 1. 参考以下用户上下文数据：课程表、重要时间节点、任务池
-2. 使用 ask_options 格式逐步了解用户的优先级和特殊需求
-3. 问清楚后再生成完整日程
+2. ▲ 每次向用户提问都必须使用 ask_options 格式，禁止纯文字提问！▲
+3. 根据用户回答逐步细化，一般需要 2-3 轮追问
+4. 最终生成完整的日程（包含休息时段）
+
+【日程生成要求】
+- 任务之间必须插入休息块（BREAK），例如：
+  "08:00-09:00 学习微机原理" → {"title":"休息","start":"09:00","end":"09:30","category":"BREAK"} → "09:30-11:00 继续学习"
+- 主线（MAIN_LINE）任务优先，时间占比更大
+- 支线（SUB_LINE）也要安排，放在主线之后
 
 【当前用户上下文】
 $context
@@ -370,8 +385,8 @@ $context
 - 常规对话：自然语言教练式回应
 - 任务确认：输出 ```json { "action": "create_task", "title": "...", "category": "MAIN_LINE|SUB_LINE", "drain_level": "HIGH|LOW", "estimated_minutes": 60 } ```
 - 进化拦截：输出 ```json { "action": "evolution_capture", "source": "USER_PROMPT", "category": "FEATURE_REQ|UI_UX|TECH_STACK", "raw_content": "..." } ```
-- 交互提问：输出 ```json { "action": "ask_options", "question": "你的问题", "options": [{"id": "opt1", "label": "选项标题", "description": "选项说明"}] } ```
-- 生成日程：输出 ```json { "action": "generate_daily_schedule", "blocks": [{"title": "任务名", "start": "HH:mm", "end": "HH:mm", "category": "MAIN_LINE|SUB_LINE"}] } ```
+- ▲ 交互提问（必须使用）：输出 ```json { "action": "ask_options", "question": "你的问题", "options": [{"id": "opt1", "label": "选项标题", "description": "选项说明"}] } ```
+- 生成日程（含休息块）：输出 ```json { "action": "generate_daily_schedule", "blocks": [{"title":"学习微机原理","start":"08:00","end":"09:00","category":"MAIN_LINE"},{"title":"休息","start":"09:00","end":"09:30","category":"BREAK"},{"title":"学习微机原理","start":"09:30","end":"11:00","category":"MAIN_LINE"},{"title":"技术支线","start":"20:00","end":"21:00","category":"SUB_LINE"}] } ```
 """
         }
     }

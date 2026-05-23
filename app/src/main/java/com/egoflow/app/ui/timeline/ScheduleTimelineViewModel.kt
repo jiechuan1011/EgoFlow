@@ -125,11 +125,24 @@ class ScheduleTimelineViewModel(
             val duration = block.endTime - block.startTime
             val newEnd = newStart + duration
 
+            // 1. 如果是任务块，将原任务标记为 SCHEDULED 防止重复调度
+            if (!block.isHardBlock && block.taskId.isNotBlank()) {
+                taskRepository.updateTaskStatus(block.taskId, "SCHEDULED")
+            }
+
+            // 2. 删除旧的 hard block（按 taskId 或标题匹配）
             val dayStart = newStart - 86400_000
             val dayEnd = newStart + 86400_000
             val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
-            existing.filter { it.id == block.taskId }.forEach { hardBlockRepository.deleteBlock(it) }
-            hardBlockRepository.addBlock(subjectName = block.title, startTime = newStart, endTime = newEnd)
+            existing.filter { it.id == block.taskId || it.subjectName == block.title }
+                .forEach { hardBlockRepository.deleteBlock(it) }
+
+            // 3. 创建新的硬墙块
+            hardBlockRepository.addBlock(
+                subjectName = block.title,
+                startTime = newStart,
+                endTime = newEnd
+            )
 
             _uiState.update { it.copy(editingBlock = null) }
             loadSchedule()

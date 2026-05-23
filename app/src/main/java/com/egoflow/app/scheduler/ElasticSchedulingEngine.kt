@@ -25,15 +25,12 @@ class ElasticSchedulingEngine {
         val goldenHourEnd: Int = 12,        // 黄金精力时期结束 12:00
         val afternoonStart: Int = 14,       // 下午时段开始 14:00
         val afternoonEnd: Int = 17,         // 下午时段结束 17:00
-        val rewardHourStart: Int = 20,      // 奖励时段开始 20:00
-        val subLineUnlockMinutes: Int = 90, // 解锁支线时长 90分钟
-        val mainLineThresholdMinutes: Int = 180, // 主线满3小时解锁支线
         val highDrainBufferMinutes: Int = 15,    // 高耗任务缓冲间隔
-        val subLineLockUntilHours: Double = 4.5,  // 支线锁定4.5小时后解锁
         val maxDailyMinutes: Int = 480,     // 每日最多学习 8 小时
         val autoBreakMinutes: Int = 10,     // 任务间自动休息 10 分钟
         val longBreakAfterMinutes: Int = 120, // 每2小时一次长休息
-        val longBreakMinutes: Int = 30      // 长休息30分钟
+        val longBreakMinutes: Int = 30,      // 长休息30分钟
+        val subLineRatio: Float = 0.3f      // 支线占总可用时间的比例（主线优先，剩余给支线）
     )
 
     private var config = SchedulingConfig()
@@ -42,8 +39,7 @@ class ElasticSchedulingEngine {
         overrides.forEach { (key, value) ->
             config = when (key) {
                 "high_drain_buffer_minutes" -> config.copy(highDrainBufferMinutes = (value as Number).toInt())
-                "sub_line_lock_until_hours" -> config.copy(subLineLockUntilHours = (value as Number).toDouble())
-                "tech_task_alert_trigger" -> config // 布尔开关，由调用方处理
+                "sub_line_ratio" -> config.copy(subLineRatio = (value as Number).toFloat())
                 else -> config
             }
         }
@@ -53,6 +49,9 @@ class ElasticSchedulingEngine {
 
     /**
      * 生成一天的计划
+     *
+     * 主线优先排入黄金时段，支线排入后续空闲时段
+     * 主线占用约 70% 可用时间，支线约 30%
      *
      * @param tasks 待排程的任务（来自 POOL）
      * @param hardBlocks 刚性课表/硬墙
@@ -94,116 +93,75 @@ class ElasticSchedulingEngine {
         // Step 2: 分离主线与支线任务
         val mainLineTasks = tasks
             .filter { it.category == "MAIN_LINE" && it.status == "POOL" }
-            .sortedByDescending { it.drainLevel == "HIGH" } // HIGH drain 优先
+            .sortedByDescending { it.drainLevel == "HIGH" }
         val subLineTasks = tasks
             .filter { it.category == "SUB_LINE" && it.status == "POOL" }
 
-        // Step 3: 确定今日可用总时段（全天）
+        // Step 3: 确定可用时段
         val allHardBlocks = blocks.filter { it.isHardBlock }
         val freeSlots = computeFreeSlots(dayStart, dayEnd, allHardBlocks)
-
-        // Step 4: 分配主线任务到黄金时段和可用时段，带自动休息
-        var mainLineScheduled = 0
         var totalDailyMinutes = completedMainLineMinutes
-        val scheduledMainLineTasks = mutableListOf<TaskEntity>()
+        var mainLineScheduled = 0
+        var subLineScheduled = 0
 
+        // Step 4: 主线任务优先分配（黄金时段优先）
         for (task in mainLineTasks) {
             if (freeSlots.isEmpty()) break
-            // 检查是否超出每日上限
             if (totalDailyMinutes + task.estimatedMinutes > config.maxDailyMinutes) break
-            val slot = findBestSlot(task, freeSlots, dayStart)
+            val slot = findBestSlot(task, freeSlots)
             if (slot != null) {
                 val blockEnd = minOf(slot.end, slot.start + task.estimatedMinutes * 60_000L)
-                if (blockEnd - slot.start >= 30 * 60_000) { // 至少30分钟
-                    // 与前一个任务之间插入休息
-                    if (blocks.isNotEmpty() && blocks.last().isHardBlock.not()) {
-                        val prevEnd = blocks.last().endTime
-                        val gap = slot.start - prevEnd
-                        if (gap > 5 * 60_000) {
-                            val breakLen = if (totalDailyMinutes % config.longBreakAfterMinutes < task.estimatedMinutes
-                                && totalDailyMinutes >= config.longBreakAfterMinutes)
-                                config.longBreakMinutes else config.autoBreakMinutes
-                            val breakEnd = minOf(slot.start, prevEnd + breakLen * 60_000L)
-                            if (breakEnd > prevEnd + 60_000) {
-                                blocks.add(EnergyBlock(
-                                    id = UUID.randomUUID().toString(),
-                                    title = "☕ 休息",
-                                    taskId = "",
-                                    category = "BREAK",
-                                    drainLevel = "LOW",
-                                    startTime = prevEnd,
-                                    endTime = breakEnd
-                                ))
-                            }
-                        }
-                    }
+                if (blockEnd - slot.start >= 30 * 60_000) {
+                    // 插入休息
+                    insertBreakBefore(blocks, slot.start, totalDailyMinutes, config)
 
-                    blocks.add(
-                        EnergyBlock(
-                            id = UUID.randomUUID().toString(),
-                            title = task.title,
-                            taskId = task.id,
-                            category = task.category,
-                            drainLevel = task.drainLevel,
-                            startTime = slot.start,
-                            endTime = blockEnd
-                        )
-                    )
+                    blocks.add(EnergyBlock(
+                        id = UUID.randomUUID().toString(),
+                        title = task.title,
+                        taskId = task.id,
+                        category = task.category,
+                        drainLevel = task.drainLevel,
+                        startTime = slot.start,
+                        endTime = blockEnd
+                    ))
                     mainLineScheduled += task.estimatedMinutes
                     totalDailyMinutes += task.estimatedMinutes
-                    scheduledMainLineTasks.add(task)
                     adjustFreeSlot(freeSlots, slot.start, blockEnd, config.highDrainBufferMinutes)
                 }
             }
         }
 
-        // Step 5: 主线达标后，解锁支线奖励时段
-        val totalCompletedMainLine = completedMainLineMinutes + mainLineScheduled
-        val rewardUnlocked = totalCompletedMainLine >= config.mainLineThresholdMinutes
+        // Step 5: 主线完成后，用剩余空闲时段安排支线任务
+        val totalMainLine = completedMainLineMinutes + mainLineScheduled
+        // 按主线时间占比动态计算支线配额
+        val subLineQuota = if (totalMainLine > 0)
+            (totalMainLine * config.subLineRatio / (1f - config.subLineRatio)).toInt()
+        else
+            120 // 无主线时默认给 120 分钟
 
-        if (rewardUnlocked) {
-            val rewardStart = getTimeInMillis(today, config.rewardHourStart, 0)
-            // 主线与奖励之间插入长休息
-            if (blocks.isNotEmpty() && blocks.last().isHardBlock.not() && blocks.last().endTime < rewardStart - 5 * 60_000) {
-                blocks.add(EnergyBlock(
-                    id = UUID.randomUUID().toString(),
-                    title = "☕ 长休息",
-                    taskId = "",
-                    category = "BREAK",
-                    drainLevel = "LOW",
-                    startTime = blocks.last().endTime,
-                    endTime = minOf(rewardStart, blocks.last().endTime + config.longBreakMinutes * 60_000L)
-                ))
-            }
-            val rewardEnd = rewardStart + config.subLineUnlockMinutes * 60_000L
+        var subLineUsed = 0
+        for (task in subLineTasks) {
+            if (freeSlots.isEmpty()) break
+            if (subLineUsed >= subLineQuota) break
+            if (totalDailyMinutes + task.estimatedMinutes > config.maxDailyMinutes) break
+            val slot = freeSlots.firstOrNull { (it.end - it.start) >= task.estimatedMinutes * 60_000L }
+            if (slot != null) {
+                val blockEnd = minOf(slot.end, slot.start + task.estimatedMinutes * 60_000L)
+                if (blockEnd - slot.start >= 15 * 60_000) {
+                    insertBreakBefore(blocks, slot.start, totalDailyMinutes, config)
 
-            // 检查奖励时段是否与硬墙冲突
-            val rewardSlotBlocked = allHardBlocks.any { block ->
-                rewardStart < block.endTime && rewardEnd > block.startTime
-            }
-
-            if (!rewardSlotBlocked) {
-                // 分配支线任务到奖励时段（同样受每日上限约束）
-                var rewardSlotStart = rewardStart
-                for (task in subLineTasks) {
-                    if (totalDailyMinutes + task.estimatedMinutes > config.maxDailyMinutes) break
-                    val taskEnd = minOf(rewardEnd, rewardSlotStart + task.estimatedMinutes * 60_000L)
-                    if (taskEnd > rewardSlotStart) {
-                        totalDailyMinutes += task.estimatedMinutes
-                        blocks.add(
-                            EnergyBlock(
-                                id = UUID.randomUUID().toString(),
-                                title = task.title,
-                                taskId = task.id,
-                                category = task.category,
-                                drainLevel = task.drainLevel,
-                                startTime = rewardSlotStart,
-                                endTime = taskEnd
-                            )
-                        )
-                        rewardSlotStart = taskEnd + config.highDrainBufferMinutes * 60_000L
-                        if (rewardSlotStart >= rewardEnd) break
-                    }
+                    blocks.add(EnergyBlock(
+                        id = UUID.randomUUID().toString(),
+                        title = task.title,
+                        taskId = task.id,
+                        category = task.category,
+                        drainLevel = task.drainLevel,
+                        startTime = slot.start,
+                        endTime = blockEnd
+                    ))
+                    subLineUsed += task.estimatedMinutes
+                    totalDailyMinutes += task.estimatedMinutes
+                    adjustFreeSlot(freeSlots, slot.start, blockEnd, config.highDrainBufferMinutes)
                 }
             }
         }
@@ -215,8 +173,8 @@ class ElasticSchedulingEngine {
             dateStr = dateStr,
             energyBlocks = blocks,
             totalMainLineMinutes = mainLineScheduled,
-            totalSubLineMinutes = if (rewardUnlocked) subLineTasks.sumOf { it.estimatedMinutes } else 0,
-            unlockedRewardMinutes = if (rewardUnlocked) config.subLineUnlockMinutes else 0
+            totalSubLineMinutes = subLineUsed,
+            unlockedRewardMinutes = subLineUsed
         )
     }
 
@@ -275,21 +233,27 @@ class ElasticSchedulingEngine {
         return slots
     }
 
-    private fun findBestSlot(task: TaskEntity, freeSlots: MutableList<TimeSlot>, dayStart: Long): TimeSlot? {
+    private fun findBestSlot(task: TaskEntity, freeSlots: MutableList<TimeSlot>): TimeSlot? {
         val taskDuration = task.estimatedMinutes * 60_000L
-        val goldenStart = dayStart + (config.goldenHourStart - config.dayStartHour) * 3600_000L
-        val goldenEnd = dayStart + (config.goldenHourEnd - config.dayStartHour) * 3600_000L
+        val now = System.currentTimeMillis()
+        // 优先从当前时间之后的时段开始排
+        val validSlots = freeSlots.filter { it.end > now }
+        if (validSlots.isEmpty()) return null
+
+        // 主线 HIGH drain 任务优先排入黄金时段
+        val goldenStart = getTimeInMillis(Calendar.getInstance(), config.goldenHourStart, 0)
+        val goldenEnd = getTimeInMillis(Calendar.getInstance(), config.goldenHourEnd, 0)
 
         // HIGH drain 任务优先排入黄金时段
-        if (task.drainLevel == "HIGH") {
-            val goldenSlot = freeSlots.firstOrNull { slot ->
+        if (task.drainLevel == "HIGH" && task.category == "MAIN_LINE") {
+            val goldenSlot = validSlots.firstOrNull { slot ->
                 slot.start in goldenStart until goldenEnd && (slot.end - slot.start) >= taskDuration
             }
             if (goldenSlot != null) return goldenSlot
         }
 
         // 找第一个足够大的时段
-        return freeSlots.firstOrNull { slot ->
+        return validSlots.firstOrNull { slot ->
             (slot.end - slot.start) >= taskDuration
         }
     }
@@ -312,6 +276,34 @@ class ElasticSchedulingEngine {
             }
         }
         // 重新计算剩余空闲
+    }
+
+    /** 在任务前插入休息块（如果与前一个块有间隔） */
+    private fun insertBreakBefore(
+        blocks: MutableList<EnergyBlock>,
+        taskStart: Long,
+        totalDailyMinutes: Int,
+        config: SchedulingConfig
+    ) {
+        if (blocks.isEmpty() || blocks.last().isHardBlock) return
+        val prevEnd = blocks.last().endTime
+        val gap = taskStart - prevEnd
+        if (gap > 5 * 60_000) {
+            val breakLen = if (totalDailyMinutes > 0 && totalDailyMinutes % config.longBreakAfterMinutes < 30)
+                config.longBreakMinutes else config.autoBreakMinutes
+            val breakEnd = minOf(taskStart, prevEnd + breakLen * 60_000L)
+            if (breakEnd > prevEnd + 60_000) {
+                blocks.add(EnergyBlock(
+                    id = UUID.randomUUID().toString(),
+                    title = "☕ 休息",
+                    taskId = "",
+                    category = "BREAK",
+                    drainLevel = "LOW",
+                    startTime = prevEnd,
+                    endTime = breakEnd
+                ))
+            }
+        }
     }
 
     private fun getTimeInMillis(calendar: Calendar, hour: Int, minute: Int): Long {

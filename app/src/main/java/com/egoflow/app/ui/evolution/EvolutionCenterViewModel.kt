@@ -51,8 +51,8 @@ class EvolutionCenterViewModel(
             it.copy(
                 configOverrides = mapOf(
                     "high_drain_buffer_minutes" to config.highDrainBufferMinutes,
-                    "sub_line_lock_until_hours" to config.subLineLockUntilHours,
-                    "main_line_threshold_minutes" to config.mainLineThresholdMinutes
+                    "sub_line_ratio" to config.subLineRatio,
+                    "auto_break_minutes" to config.autoBreakMinutes
                 )
             )
         }
