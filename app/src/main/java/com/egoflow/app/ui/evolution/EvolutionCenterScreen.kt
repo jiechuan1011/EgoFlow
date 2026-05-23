@@ -178,6 +178,7 @@ private fun BlueprintTab(
     uiState: EvolutionUiState,
     viewModel: EvolutionCenterViewModel
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scrollState = rememberScrollState()
     val markdown = remember(uiState.entries, uiState.configOverrides) {
         viewModel.exportBlueprint()
@@ -189,12 +190,19 @@ private fun BlueprintTab(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        // 导出按钮
+        // 导出按钮（实际分享到其他 App）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
-            OutlinedButton(onClick = { /* 导出/分享 */ }) {
+            OutlinedButton(onClick = {
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, markdown)
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "EgoFlow 月度进化蓝图")
+                }
+                context.startActivity(android.content.Intent.createChooser(intent, "分享进化蓝图"))
+            }) {
                 Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("导出")
