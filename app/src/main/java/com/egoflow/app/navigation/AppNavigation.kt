@@ -8,6 +8,7 @@ import com.egoflow.app.ui.focus.FocusFirewallScreen
 import com.egoflow.app.ui.coach.ChatCoachScreen
 import com.egoflow.app.ui.evolution.EvolutionCenterScreen
 import com.egoflow.app.ui.timeline.ScheduleTimelineScreen
+import com.egoflow.app.ui.schedule.ScheduleScreen
 import com.egoflow.app.ui.settings.SettingsScreen
 
 object Routes {
@@ -16,6 +17,7 @@ object Routes {
     const val EVOLUTION = "evolution"
     const val TIMELINE = "timeline"
     const val SETTINGS = "settings"
+    const val SCHEDULE = "schedule"
 }
 
 @Composable
@@ -29,7 +31,8 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToCoach = { navController.navigate(Routes.COACH) },
                 onNavigateToTimeline = { navController.navigate(Routes.TIMELINE) },
                 onNavigateToEvolution = { navController.navigate(Routes.EVOLUTION) },
-                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
+                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                onNavigateToSchedule = { navController.navigate(Routes.SCHEDULE) }
             )
         }
         composable(Routes.COACH) {
@@ -43,6 +46,9 @@ fun AppNavigation(navController: NavHostController) {
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.SCHEDULE) {
+            ScheduleScreen(onBack = { navController.popBackStack() })
         }
     }
 }

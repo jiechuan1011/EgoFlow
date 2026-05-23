@@ -9,10 +9,10 @@ interface HardBlockDao {
     @Query("SELECT * FROM hard_blocks ORDER BY start_time ASC")
     fun getAll(): Flow<List<HardBlockEntity>>
 
-    @Query("SELECT * FROM hard_blocks WHERE start_time >= :dayStart AND end_time <= :dayEnd ORDER BY start_time ASC")
+    @Query("SELECT * FROM hard_blocks WHERE start_time < :dayEnd AND end_time > :dayStart ORDER BY start_time ASC")
     fun getBlocksForDay(dayStart: Long, dayEnd: Long): Flow<List<HardBlockEntity>>
 
-    @Query("SELECT * FROM hard_blocks WHERE start_time >= :dayStart AND end_time <= :dayEnd ORDER BY start_time ASC")
+    @Query("SELECT * FROM hard_blocks WHERE start_time < :dayEnd AND end_time > :dayStart ORDER BY start_time ASC")
     suspend fun getBlocksForDaySync(dayStart: Long, dayEnd: Long): List<HardBlockEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

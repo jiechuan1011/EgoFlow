@@ -20,6 +20,8 @@ class EgoFlowApp : Application() {
         private set
     lateinit var settingsRepository: SettingsRepository
         private set
+    lateinit var scheduleTemplateRepository: ScheduleTemplateRepository
+        private set
 
     // Repositories
     lateinit var taskRepository: TaskRepository
@@ -64,6 +66,7 @@ class EgoFlowApp : Application() {
         try {
             database = AppDatabase.getInstance(this)
             settingsRepository = SettingsRepository(this)
+            scheduleTemplateRepository = ScheduleTemplateRepository(this)
 
             // 从 DataStore 加载已保存的 API Key
             appScope.launch {

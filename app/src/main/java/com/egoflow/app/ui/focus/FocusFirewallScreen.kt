@@ -34,6 +34,7 @@ fun FocusFirewallScreen(
     onNavigateToTimeline: () -> Unit,
     onNavigateToEvolution: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToSchedule: () -> Unit = {},
     viewModel: FocusFirewallViewModel = viewModel(factory = FocusFirewallViewModel.Factory())
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,6 +55,9 @@ fun FocusFirewallScreen(
                     }
                     IconButton(onClick = { viewModel.toggleTaskPool() }) {
                         Icon(Icons.Default.List, contentDescription = "任务池")
+                    }
+                    IconButton(onClick = onNavigateToSchedule) {
+                        Icon(Icons.Default.DateRange, contentDescription = "课程表")
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "设置")
