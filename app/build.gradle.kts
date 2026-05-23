@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,7 +8,7 @@ plugins {
 
 // ===== 版本管理 =====
 val versionFile = rootProject.file("version.properties")
-val versionProps = java.util.Properties().apply {
+val versionProps = Properties().apply {
     if (versionFile.exists()) load(versionFile.inputStream())
 }
 val versionCode = (versionProps["VERSION_CODE"] ?: "1").toString().toInt()
@@ -16,7 +18,7 @@ val versionName = (versionProps["VERSION_NAME"] ?: "1.0.0").toString()
 val keystoreFile = rootProject.file("keystore.properties")
 val signingConfigsMap = mutableMapOf<String, String>()
 if (keystoreFile.exists()) {
-    java.util.Properties().apply {
+    Properties().apply {
         load(keystoreFile.inputStream())
         signingConfigsMap["storeFile"] = getProperty("storeFile", "")
         signingConfigsMap["storePassword"] = getProperty("storePassword", "")
