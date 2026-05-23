@@ -26,6 +26,8 @@ class EgoFlowApp : Application() {
         private set
     lateinit var chatRepository: ChatRepository
         private set
+    lateinit var milestoneRepository: MilestoneRepository
+        private set
 
     // Repositories
     lateinit var taskRepository: TaskRepository
@@ -72,6 +74,7 @@ class EgoFlowApp : Application() {
             settingsRepository = SettingsRepository(this)
             scheduleTemplateRepository = ScheduleTemplateRepository(this)
             chatRepository = ChatRepository(database.chatMessageDao())
+            milestoneRepository = MilestoneRepository(this)
 
             // 从 DataStore 加载已保存的 API Key
             appScope.launch {
@@ -111,8 +114,8 @@ class EgoFlowApp : Application() {
     /** 首次启动时 seed 功能需求到进化中心 */
     private fun seedEvolutionBacklog() {
         appScope.launch {
-            val existing = evolutionRepository.getPending().first()
-            if (existing.isNotEmpty()) return@launch // 已有条目，跳过
+            val existing = evolutionRepository.getAll().first()
+            if (existing.isNotEmpty()) return@launch // 已有任何条目就跳过（防止覆盖安装重置）
 
             val seeds = listOf(
                 Triple("FEATURE_REQ", "自动安排休息", "用户要求在日程中自动插入休息时段，避免连续学习。" to null),
