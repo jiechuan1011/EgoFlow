@@ -1,6 +1,5 @@
 package com.egoflow.app.ui.components
 
-import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
@@ -18,8 +17,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private const val TAG = "MarkdownText"
-
 /**
  * 简易 Markdown 渲染组件
  */
@@ -27,15 +24,8 @@ private const val TAG = "MarkdownText"
 fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
     val onBg = MaterialTheme.colorScheme.onBackground
     val primary = MaterialTheme.colorScheme.primary
-    val error = MaterialTheme.colorScheme.error
 
-    // 在可组合上下文中捕获所有颜色，传递给纯函数
-    try {
-        MarkdownContent(markdown, modifier, onBg, primary)
-    } catch (e: Exception) {
-        Log.e(TAG, "Markdown render failed", e)
-        Text(text = markdown, fontSize = 13.sp, color = error, modifier = modifier)
-    }
+    MarkdownContent(markdown, modifier, onBg, primary)
 }
 
 @Composable
