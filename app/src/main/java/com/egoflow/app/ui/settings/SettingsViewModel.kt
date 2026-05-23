@@ -52,7 +52,7 @@ class SettingsViewModel(
         launchIntFlow(settingsRepository.blueprintProvider) { v -> updateState { it.copy(blueprintProvider = v) } }
     }
 
-    private inline fun updateState(update: SettingsUiState.() -> SettingsUiState) {
+    private inline fun updateState(update: (SettingsUiState) -> SettingsUiState) {
         _uiState.update(update)
     }
 
