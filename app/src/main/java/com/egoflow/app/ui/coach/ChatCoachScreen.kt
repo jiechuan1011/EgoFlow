@@ -63,8 +63,8 @@ fun ChatCoachScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleHistory() }) {
-                        Icon(Icons.Default.List, contentDescription = "历史")
+                    TextButton(onClick = { viewModel.toggleHistory() }) {
+                        Text("历史", style = MaterialTheme.typography.labelMedium)
                     }
                 },
                 scrollBehavior = scrollBehavior
