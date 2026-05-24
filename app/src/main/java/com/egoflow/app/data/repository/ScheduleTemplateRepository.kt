@@ -46,6 +46,7 @@ class ScheduleTemplateRepository(private val context: Context) {
                 put("endMinute", item.endMinute)
                 item.validFrom?.let { put("validFrom", it) }
                 item.validUntil?.let { put("validUntil", it) }
+                if (item.interval > 1) put("interval", item.interval)
             })
         }
         context.dataStore.edit { it[TEMPLATE_JSON] = arr.toString() }
@@ -133,6 +134,7 @@ class ScheduleTemplateRepository(private val context: Context) {
         endHour = obj.getInt("endHour"),
         endMinute = obj.getInt("endMinute"),
         validFrom = if (obj.has("validFrom")) obj.getLong("validFrom") else null,
-        validUntil = if (obj.has("validUntil")) obj.getLong("validUntil") else null
+        validUntil = if (obj.has("validUntil")) obj.getLong("validUntil") else null,
+        interval = if (obj.has("interval")) obj.getInt("interval") else 1
     )
 }

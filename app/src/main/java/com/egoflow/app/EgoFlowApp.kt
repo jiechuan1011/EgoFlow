@@ -104,6 +104,11 @@ class EgoFlowApp : Application() {
             deepSeekService = DeepSeekService()
             claudeService = ClaudeService()
             seedEvolutionBacklog()
+            // 启动时物理清理所有 DEPRECATED 进化条目，防止覆盖安装残留
+            appScope.launch {
+                evolutionRepository.deleteAllByStatus("DEPRECATED")
+                Log.d("EgoFlowInit", "DEPRECATED evolution entries cleaned up")
+            }
             Log.d("EgoFlowInit", "All initialized")
         } catch (e: Exception) {
             Log.e("EgoFlowInit", "Init failed", e)

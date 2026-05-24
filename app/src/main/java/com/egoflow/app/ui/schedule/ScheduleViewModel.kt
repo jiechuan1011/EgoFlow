@@ -1,5 +1,6 @@
 package com.egoflow.app.ui.schedule
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -113,10 +114,15 @@ class ScheduleViewModel(
                 val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
                 existing.forEach { hardBlockRepository.deleteBlock(it) }
 
-                // 添加当天有效的课程
+                // 添加当天有效的课程（含单双周过滤）
                 val weekdayIndex = d + 1 // 1=周一
-                items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }
-                    .forEach { item ->
+                val activeCourses = items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }
+                val dateStr = "%04d-%02d-%02d".format(day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH))
+                Log.d("ScheduleVM", "[生成硬墙] $dateStr (周$weekdayIndex) → ${activeCourses.size}门课激活")
+                activeCourses.forEach { item ->
+                    Log.d("ScheduleVM", "  → ${item.subjectName} ${item.startHour}:%02d-${item.endHour}:%02d interval=${item.interval} validFrom=${item.validFrom}".format(item.startMinute, item.endMinute))
+                }
+                activeCourses.forEach { item ->
                         val startCal = day.clone() as Calendar
                         startCal.set(Calendar.HOUR_OF_DAY, item.startHour)
                         startCal.set(Calendar.MINUTE, item.startMinute)

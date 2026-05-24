@@ -39,7 +39,8 @@ class EvolutionCenterViewModel(
 
     private fun loadEntries() {
         viewModelScope.launch {
-            evolutionRepository.getAll().collect { entries ->
+            // 使用非废弃查询，从数据源层排除 DEPRECATED 脏数据
+            evolutionRepository.getAllNonDeprecated().collect { entries ->
                 _uiState.update { it.copy(entries = entries, isLoading = false) }
             }
         }
@@ -124,16 +125,14 @@ class EvolutionCenterViewModel(
 
     fun markAllImplemented() {
         viewModelScope.launch {
-            evolutionRepository.getAll().first().forEach { entry ->
-                if (entry.status == "PENDING") {
-                    evolutionRepository.updateStatus(entry.id, "IMPLEMENTED")
-                }
-            }
+            evolutionRepository.markAllPendingAsImplemented()
         }
     }
 
     /**
      * 导出月度进化蓝图（生成 Markdown）
+     *
+     * 数据清洗：强制排除 DEPRECATED 条目（双重保险——数据源层 + 应用层）
      */
     fun exportBlueprint(): String {
         val sb = StringBuilder()
@@ -145,7 +144,10 @@ class EvolutionCenterViewModel(
         sb.appendLine()
         sb.appendLine("## 1. 用户驱动功能需求 (User-Driven Features)")
         sb.appendLine()
-        val userEntries = _uiState.value.entries.filter {
+
+        // 双层过滤：状态 != DEPRECATED + 来源 + 状态 PENDING
+        val cleanEntries = _uiState.value.entries.filter { it.status != "DEPRECATED" }
+        val userEntries = cleanEntries.filter {
             it.source == "USER_PROMPT" && it.status == "PENDING"
         }
         if (userEntries.isEmpty()) {
@@ -162,7 +164,7 @@ class EvolutionCenterViewModel(
         sb.appendLine()
         sb.appendLine("## 2. AI 自主进化突变案 (AI-Self-Reflected Mutations)")
         sb.appendLine()
-        val aiEntries = _uiState.value.entries.filter {
+        val aiEntries = cleanEntries.filter {
             it.source == "AI_DIAGNOSIS" && it.status == "PENDING"
         }
         if (aiEntries.isEmpty()) {
@@ -181,6 +183,16 @@ class EvolutionCenterViewModel(
         }
 
         return sb.toString()
+    }
+
+    /**
+     * 导出蓝图的完整操作：生成 Markdown → 批量标记已实现 → 返回文本
+     * 实现"导出即标记"需求
+     */
+    fun exportAndMarkAll(): String {
+        val markdown = exportBlueprint()
+        markAllImplemented()
+        return markdown
     }
 
     class Factory : ViewModelProvider.Factory {

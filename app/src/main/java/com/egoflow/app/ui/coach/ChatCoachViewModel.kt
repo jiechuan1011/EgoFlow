@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.egoflow.app.EgoFlowApp
 import com.egoflow.app.ai.DeepSeekService
+import android.util.Log
+import com.egoflow.app.data.entity.HardBlockEntity
 import com.egoflow.app.data.repository.ChatRepository
 import com.egoflow.app.data.repository.EvolutionRepository
 import com.egoflow.app.data.repository.HardBlockRepository
@@ -14,6 +16,7 @@ import com.egoflow.app.data.repository.TaskRepository
 import com.egoflow.app.domain.model.CoachMessage
 import com.egoflow.app.domain.model.CoachOption
 import com.egoflow.app.domain.model.CoachOptionsGroup
+import com.egoflow.app.util.ScheduleParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -46,6 +49,11 @@ class ChatCoachViewModel(
 
     private val _uiState = MutableStateFlow(CoachUiState())
     val uiState: StateFlow<CoachUiState> = _uiState.asStateFlow()
+
+    private val TAG = "ChatCoachVM"
+
+    /** 当日是否已经确认过排程，防止重复落地 */
+    private var scheduleConfirmedToday = false
 
     init {
         // 加载今日历史消息
@@ -82,14 +90,28 @@ class ChatCoachViewModel(
                 today.get(Calendar.DAY_OF_MONTH)
             )
 
-            // 获取今日课程
+            // 计算今日 00:00 时间戳（用于 isActiveForDay 比对）
+            val todayStart = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            // 获取今日课程（使用 isActiveForDay 进行单双周/日期范围过滤）
             val items = scheduleTemplateRepository.getAllItems()
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
             val weekdayIndex = when (dayOfWeek) {
                 Calendar.SUNDAY -> 7
                 else -> dayOfWeek - 1
             }
-            val todayClasses = items.filter { it.dayOfWeek == weekdayIndex }
+            val todayClasses = items.filter {
+                it.dayOfWeek == weekdayIndex && it.isActiveForDay(todayStart)
+            }
+            Log.d(TAG, "今日课程（isActiveForDay过滤后）：${todayClasses.size}门课")
+            todayClasses.forEach { c ->
+                Log.d(TAG, "  → ${c.subjectName} ${c.startHour}:%02d-${c.endHour}:%02d interval=${c.interval}".format(c.startMinute, c.endMinute))
+            }
             val classSummary = if (todayClasses.isEmpty()) "今日无课程安排"
             else todayClasses.joinToString("；") { "${it.subjectName} ${it.startHour}:%02d-${it.endHour}:%02d".format(it.startMinute, it.endMinute) }
 
@@ -153,6 +175,15 @@ class ChatCoachViewModel(
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
         if (text.isBlank()) return
+
+        // ===== 【排程落地流程】用户输入 "OK" 时触发 =====
+        if (text.equals("OK", ignoreCase = true)) {
+            _uiState.update { it.copy(inputText = "", isProcessing = true) }
+            viewModelScope.launch {
+                handleOkConfirmation()
+            }
+            return
+        }
 
         val now = System.currentTimeMillis()
         val userMessage = CoachMessage(
@@ -325,6 +356,149 @@ class ChatCoachViewModel(
         } catch (e: Exception) {
             addCoachMessage(actionJson)
         }
+    }
+
+    /**
+     * ===== 【排程落地流程】用户输入 "OK" 后的完整处理 =====
+     *
+     * 1. 回溯 AI 教练最后一条包含日程的消息
+     * 2. 正则解析出每个时间块
+     * 3. 批量插入 HardBlock（锁定日程时间线）
+     * 4. 将匹配的 POOL 任务标记为 SCHEDULED（自动消费）
+     * 5. 回复确认消息
+     */
+    private suspend fun handleOkConfirmation() {
+        if (scheduleConfirmedToday) {
+            addCoachMessage("今日日程已经确认过了。如需重新生成，请让 AI 生成新的日程。")
+            _uiState.update { it.copy(isProcessing = false) }
+            return
+        }
+
+        Log.d(TAG, "=== 开始排程落地流程 ===")
+
+        // 1. 回溯消息
+        val scheduleText = ScheduleParser.findLastScheduleMessage(_uiState.value.messages)
+        if (scheduleText == null) {
+            Log.w(TAG, "未找到包含日程的教练消息")
+            addCoachMessage("暂时没有待确认的日程安排。请先让 AI 教练为你生成今日日程，然后输入 OK 确认。")
+            _uiState.update { it.copy(isProcessing = false) }
+            return
+        }
+
+        // 2. 正则解析
+        val parsedBlocks = ScheduleParser.parse(scheduleText)
+        if (parsedBlocks.isEmpty()) {
+            Log.w(TAG, "日程文本解析为空，原文：$scheduleText")
+            addCoachMessage("日程解析失败，请确认 AI 已生成有效的时间块。")
+            _uiState.update { it.copy(isProcessing = false) }
+            return
+        }
+
+        Log.d(TAG, "解析到 ${parsedBlocks.size} 个时间块")
+
+        // 3. 计算今日时间戳
+        val today = Calendar.getInstance()
+        val dayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        // 收集所有待创建的 HardBlock
+        val hardBlocks = mutableListOf<HardBlockEntity>()
+        var createdCount = 0
+        val summaryLines = mutableListOf<String>()
+
+        // 获取已有 POOL 任务，用于标题匹配
+        val existingPoolTasks = withContext(Dispatchers.IO) {
+            taskRepository.getAllTasks().first()
+                .filter { it.status == "POOL" }
+        }
+
+        for (block in parsedBlocks) {
+            // 跳过休息块（不创建 HardBlock 也不创建 Task）
+            if (block.category == "BREAK") {
+                summaryLines.add("  ${"%02d:%02d".format(block.startHour, block.startMinute)}-${"%02d:%02d".format(block.endHour, block.endMinute)} ☕ ${block.title}")
+                continue
+            }
+
+            // 计算时间戳
+            val startCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, block.startHour)
+                set(Calendar.MINUTE, block.startMinute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val endCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, block.endHour)
+                set(Calendar.MINUTE, block.endMinute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val startMs = startCal.timeInMillis
+            val endMs = endCal.timeInMillis
+
+            // 4. 创建/更新 Task → SCHEDULED 状态（自动消费 POOL 任务）
+            var matchedByTitle = false
+            for (poolTask in existingPoolTasks) {
+                if (poolTask.title.contains(block.title) || block.title.contains(poolTask.title)) {
+                    Log.d(TAG, "消费 POOL 任务：${poolTask.title} → SCHEDULED")
+                    withContext(Dispatchers.IO) {
+                        taskRepository.updateTaskStatus(poolTask.id, "SCHEDULED")
+                    }
+                    matchedByTitle = true
+                    break
+                }
+            }
+
+            if (!matchedByTitle && block.category != "BREAK") {
+                // 无匹配的 POOL 任务，创建新任务
+                Log.d(TAG, "无匹配 POOL 任务，创建新任务：${block.title}")
+                withContext(Dispatchers.IO) {
+                    taskRepository.createTask(
+                        title = block.title,
+                        category = block.category,
+                        drainLevel = block.drainLevel,
+                        estimatedMinutes = ((endMs - startMs) / 60000).toInt()
+                    )
+                }
+            }
+
+            // 5. 创建 HardBlock（锁定到日程时间线）
+            hardBlocks.add(
+                HardBlockEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    subjectName = block.title,
+                    startTime = startMs,
+                    endTime = endMs
+                )
+            )
+            createdCount++
+            val timeStr = "%02d:%02d-%02d:%02d".format(
+                block.startHour, block.startMinute, block.endHour, block.endMinute
+            )
+            summaryLines.add("  $timeStr ${block.title}")
+        }
+
+        // 6. 批量写入 HardBlock
+        if (hardBlocks.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                hardBlockRepository.addBlocks(hardBlocks)
+            }
+            Log.d(TAG, "批量写入 ${hardBlocks.size} 个 HardBlock")
+        }
+
+        // 7. 标记已确认
+        scheduleConfirmedToday = true
+
+        // 8. 回复确认消息
+        val summary = summaryLines.joinToString("\n")
+        addCoachMessage("✅ 日程已确认并锁定（共 $createdCount 个任务）！\n$summary\n\n前往「日程时间线」查看锁定后的全天安排。")
+
+        _uiState.update { it.copy(isProcessing = false) }
+
+        Log.d(TAG, "=== 排程落地流程完成 ===")
     }
 
     private fun addCoachMessage(content: String) {

@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.egoflow.app.domain.model.RoutineTask
 import com.egoflow.app.domain.model.ScheduleTemplateItem
+import com.egoflow.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,6 +212,38 @@ private fun ScheduleItemCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (item.interval > 1) {
+                        Surface(shape = RoundedCornerShape(4.dp), color = HardBlockRed.copy(alpha = 0.2f)) {
+                            Text(
+                                text = "每${item.interval}周",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = HardBlockRed
+                            )
+                        }
+                    }
+                    if (item.validFrom != null || item.validUntil != null) {
+                        val rangeStr = buildString {
+                            if (item.validFrom != null) {
+                                val cal = java.util.Calendar.getInstance().apply { timeInMillis = item.validFrom }
+                                append("%d/%d".format(cal.get(java.util.Calendar.MONTH) + 1, cal.get(java.util.Calendar.DAY_OF_MONTH)))
+                            }
+                            append(" - ")
+                            if (item.validUntil != null) {
+                                val cal = java.util.Calendar.getInstance().apply { timeInMillis = item.validUntil }
+                                append("%d/%d".format(cal.get(java.util.Calendar.MONTH) + 1, cal.get(java.util.Calendar.DAY_OF_MONTH)))
+                            } else {
+                                append("长期")
+                            }
+                        }
+                        Text(
+                            text = rangeStr,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                        )
+                    }
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(

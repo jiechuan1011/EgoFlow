@@ -23,4 +23,10 @@ interface EvolutionBacklogDao {
 
     @Query("UPDATE evolution_backlog SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: String, status: String)
+
+    @Query("SELECT * FROM evolution_backlog WHERE status != 'DEPRECATED' ORDER BY captured_at DESC")
+    fun getAllNonDeprecated(): Flow<List<EvolutionBacklogEntity>>
+
+    @Query("DELETE FROM evolution_backlog WHERE status = :status")
+    suspend fun deleteAllByStatus(status: String)
 }

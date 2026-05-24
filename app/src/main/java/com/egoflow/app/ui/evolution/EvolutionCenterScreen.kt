@@ -209,16 +209,17 @@ private fun BlueprintTab(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        // 导出按钮（实际分享到其他 App）
+        // 导出按钮（自动标记已实现 + 分享）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
             OutlinedButton(onClick = {
-                viewModel.markAllImplemented()
+                // 【导出即标记】生成蓝图时自动将所有 PENDING 标记为 IMPLEMENTED
+                val exportMarkdown = viewModel.exportAndMarkAll()
                 val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT, markdown)
+                    putExtra(android.content.Intent.EXTRA_TEXT, exportMarkdown)
                     putExtra(android.content.Intent.EXTRA_SUBJECT, "EgoFlow 月度进化蓝图")
                 }
                 context.startActivity(android.content.Intent.createChooser(intent, "分享进化蓝图"))

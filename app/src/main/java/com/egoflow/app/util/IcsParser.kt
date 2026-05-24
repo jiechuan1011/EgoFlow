@@ -58,6 +58,8 @@ object IcsParser {
                 dtStartToOurDay(event.dtStart)?.let { days.add(it) }
             }
 
+            val interval = rrule?.interval ?: 1
+
             for (day in days) {
                 items.add(
                     ScheduleTemplateItem(
@@ -69,7 +71,8 @@ object IcsParser {
                         endHour = event.dtEnd.get(Calendar.HOUR_OF_DAY),
                         endMinute = event.dtEnd.get(Calendar.MINUTE),
                         validFrom = validFrom,
-                        validUntil = validUntil
+                        validUntil = validUntil,
+                        interval = interval
                     )
                 )
             }
@@ -262,7 +265,7 @@ object IcsParser {
 
         return RRule(
             freq = freq,
-            byDay = if (byDay.isNotEmpty()) byDay else listOf(1, 2, 3, 4, 5),
+            byDay = byDay,       // 保持原样：无 BYDAY 时为空列表，由上层 fallback 到 DTSTART
             interval = interval,
             until = until
         )

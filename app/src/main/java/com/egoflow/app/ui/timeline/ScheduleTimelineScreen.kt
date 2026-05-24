@@ -39,6 +39,21 @@ fun ScheduleTimelineScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // 在 Composable 层计算支线任务过滤（避免在 LazyListScope 中调用 remember）
+    val blocks = uiState.schedulePlan?.energyBlocks ?: emptyList()
+    val allBlockTitles = remember(blocks) {
+        blocks.map { it.title.trim().lowercase(Locale.CHINA) }.toSet()
+    }
+    val subLineTasks = uiState.schedulePlan?.subLineTasks ?: emptyList()
+    val visibleSubLineTasks = remember(subLineTasks, allBlockTitles) {
+        subLineTasks.filter { task ->
+            val taskTitle = task.title.trim().lowercase(Locale.CHINA)
+            allBlockTitles.none { blockTitle ->
+                blockTitle.contains(taskTitle) || taskTitle.contains(blockTitle)
+            }
+        }
+    }
+
     LaunchedEffect(uiState.swapErrorMessage) {
         uiState.swapErrorMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -100,7 +115,6 @@ fun ScheduleTimelineScreen(
                 }
 
                 // 时间线块
-                val blocks = uiState.schedulePlan?.energyBlocks ?: emptyList()
                 if (blocks.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -130,9 +144,8 @@ fun ScheduleTimelineScreen(
                     )
                 }
 
-                // === 支线 TodoList ===
-                val subLineTasks = uiState.schedulePlan?.subLineTasks ?: emptyList()
-                if (subLineTasks.isNotEmpty()) {
+                // === 支线 TodoList（含自动消费隐藏 + 左滑删除） ===
+                if (visibleSubLineTasks.isNotEmpty()) {
                     item { Spacer(Modifier.height(16.dp)) }
                     item {
                         Card(
@@ -146,8 +159,8 @@ fun ScheduleTimelineScreen(
                                     Text("支线任务", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = RewardGold)
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                subLineTasks.forEach { task ->
-                                    SubLineTaskRow(
+                                visibleSubLineTasks.forEach { task ->
+                                    SwipeToDismissSubLineRow(
                                         task = task,
                                         onToggle = { viewModel.toggleSubLineTask(task.id) },
                                         onDelete = { viewModel.deleteSubLineTask(task.id) }
@@ -312,6 +325,47 @@ private fun TimelineBlockCard(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDismissSubLineRow(
+    task: TaskEntity,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else false
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            // 左滑露出红色删除背景
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(HardBlockRed.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "删除",
+                    tint = HardBlockRed,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false // 只允许左滑
+    ) {
+        SubLineTaskRow(task = task, onToggle = onToggle, onDelete = onDelete)
     }
 }
 

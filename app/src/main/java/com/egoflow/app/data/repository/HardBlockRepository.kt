@@ -31,4 +31,7 @@ class HardBlockRepository(private val hardBlockDao: HardBlockDao) {
     }
 
     suspend fun deleteBlock(block: HardBlockEntity) = hardBlockDao.delete(block)
+
+    /** 批量插入硬墙块 */
+    suspend fun addBlocks(blocks: List<HardBlockEntity>) = hardBlockDao.insertAll(blocks)
 }
