@@ -18,13 +18,17 @@ class HardBlockRepository(private val hardBlockDao: HardBlockDao) {
     suspend fun addBlock(
         subjectName: String,
         startTime: Long,
-        endTime: Long
+        endTime: Long,
+        category: String = "MAIN_LINE",
+        drainLevel: String = "HIGH"
     ): HardBlockEntity {
         val block = HardBlockEntity(
             id = UUID.randomUUID().toString(),
             subjectName = subjectName,
             startTime = startTime,
-            endTime = endTime
+            endTime = endTime,
+            category = category,
+            drainLevel = drainLevel
         )
         hardBlockDao.insert(block)
         return block

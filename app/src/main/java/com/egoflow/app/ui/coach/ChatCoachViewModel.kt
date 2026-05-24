@@ -404,6 +404,14 @@ class ChatCoachViewModel(
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
+        val dayEnd = dayStart + 86400_000L
+
+        // 【清空旧数据】先物理删除今天所有旧的 hard block，防止错乱重叠
+        val oldBlocks = withContext(Dispatchers.IO) {
+            hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
+        }
+        oldBlocks.forEach { hardBlockRepository.deleteBlock(it) }
+        Log.d(TAG, "已清理今日 ${oldBlocks.size} 个旧 HardBlock")
 
         // 收集所有待创建的 HardBlock
         val hardBlocks = mutableListOf<HardBlockEntity>()
@@ -465,13 +473,15 @@ class ChatCoachViewModel(
                 }
             }
 
-            // 5. 创建 HardBlock（锁定到日程时间线）
+            // 5. 创建 HardBlock（锁定到日程时间线，保留原始 category/drainLevel）
             hardBlocks.add(
                 HardBlockEntity(
                     id = java.util.UUID.randomUUID().toString(),
                     subjectName = block.title,
                     startTime = startMs,
-                    endTime = endMs
+                    endTime = endMs,
+                    category = block.category,
+                    drainLevel = block.drainLevel
                 )
             )
             createdCount++

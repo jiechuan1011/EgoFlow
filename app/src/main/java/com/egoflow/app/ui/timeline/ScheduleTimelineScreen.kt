@@ -252,10 +252,11 @@ private fun TimelineBlockCard(
 ) {
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     val blockColor = when {
-        block.isHardBlock -> HardBlockRed
+        block.category == "BREAK" -> SoftAmber
         block.drainLevel == "HIGH" && block.category == "MAIN_LINE" -> AccentGold
         block.drainLevel == "LOW" && block.category == "MAIN_LINE" -> CalmGreen
         block.category == "SUB_LINE" -> RewardGold
+        block.isHardBlock -> HardBlockRed
         else -> SoftAmber
     }
 

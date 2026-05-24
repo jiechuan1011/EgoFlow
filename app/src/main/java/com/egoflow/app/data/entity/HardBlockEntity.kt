@@ -9,5 +9,7 @@ data class HardBlockEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "subject_name") val subjectName: String,
     @ColumnInfo(name = "start_time") val startTime: Long,
-    @ColumnInfo(name = "end_time") val endTime: Long
+    @ColumnInfo(name = "end_time") val endTime: Long,
+    @ColumnInfo(name = "category") val category: String = "MAIN_LINE",
+    @ColumnInfo(name = "drain_level") val drainLevel: String = "HIGH"
 )

@@ -74,15 +74,15 @@ class ElasticSchedulingEngine {
 
         val blocks = mutableListOf<EnergyBlock>()
 
-        // Step 1: 添加硬墙时段
+        // Step 1: 添加硬墙时段（保留原始 category/drainLevel）
         hardBlocks.forEach { hb ->
             blocks.add(
                 EnergyBlock(
                     id = hb.id,
                     title = hb.subjectName,
                     taskId = hb.id,
-                    category = "MAIN_LINE",
-                    drainLevel = "HIGH",
+                    category = hb.category,
+                    drainLevel = hb.drainLevel,
                     startTime = hb.startTime,
                     endTime = hb.endTime,
                     isHardBlock = true
