@@ -3,6 +3,7 @@ package com.egoflow.app.data.repository
 import com.egoflow.app.data.dao.EvolutionBacklogDao
 import com.egoflow.app.data.entity.EvolutionBacklogEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 class EvolutionRepository(private val evolutionDao: EvolutionBacklogDao) {
@@ -47,7 +48,7 @@ class EvolutionRepository(private val evolutionDao: EvolutionBacklogDao) {
 
     /** 将当前所有 PENDING 条目标记为 IMPLEMENTED */
     suspend fun markAllPendingAsImplemented() {
-        val allEntries = kotlinx.coroutines.flow.first(evolutionDao.getAll())
+        val allEntries = evolutionDao.getAll().first()
         for (entry in allEntries) {
             if (entry.status == "PENDING") {
                 evolutionDao.updateStatus(entry.id, "IMPLEMENTED")
