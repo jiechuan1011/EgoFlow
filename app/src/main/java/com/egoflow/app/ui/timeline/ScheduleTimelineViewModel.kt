@@ -11,8 +11,10 @@ import com.egoflow.app.data.repository.TaskRepository
 import com.egoflow.app.domain.model.EnergyBlock
 import com.egoflow.app.domain.model.SchedulePlan
 import com.egoflow.app.scheduler.ElasticSchedulingEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 data class TimelineUiState(
@@ -56,27 +58,32 @@ class ScheduleTimelineViewModel(
 
                 _uiState.update { it.copy(selectedDate = dateStr, isLoading = true) }
 
-                hardBlockRepository.getBlocksForDay(dayStart, dayEnd).collect { hardBlocks ->
-                    taskRepository.getAllTasks().collect { tasks ->
-                        val poolTasks = tasks.filter { it.status == "POOL" }
-                        val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
-
-                        val plan = schedulingEngine.generateDailyPlan(
-                            tasks = poolTasks,
-                            hardBlocks = hardBlocks,
-                            completedMainLineMinutes = doneMainLineMinutes
-                        )
-
-                        _uiState.update {
-                            it.copy(
-                                schedulePlan = plan,
-                                isLoading = false,
-                                swapTarget = null,
-                                swapErrorMessage = null
-                            )
-                        }
-                    }
+                // 一次性加载（非嵌套 collect），避免 Room Flow 阻塞导致后续 emission 丢失
+                val hardBlocks = withContext(Dispatchers.IO) {
+                    hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
                 }
+                val allTasks = withContext(Dispatchers.IO) {
+                    taskRepository.getAllTasks().first()
+                }
+                val poolTasks = allTasks.filter { it.status == "POOL" }
+                val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
+
+                val plan = schedulingEngine.generateDailyPlan(
+                    tasks = poolTasks,
+                    hardBlocks = hardBlocks,
+                    completedMainLineMinutes = doneMainLineMinutes
+                )
+
+                _uiState.update {
+                    it.copy(
+                        schedulePlan = plan,
+                        isLoading = false,
+                        swapTarget = null,
+                        swapErrorMessage = null
+                    )
+                }
+
+                Log.d("TimelineVM", "Plan loaded: ${plan.energyBlocks.size} blocks, ${plan.subLineTasks.size} subline")
             } catch (e: Exception) {
                 Log.e("TimelineVM", "loadSchedule failed", e)
                 _uiState.update { it.copy(isLoading = false) }
@@ -204,6 +211,11 @@ class ScheduleTimelineViewModel(
         viewModelScope.launch {
             taskRepository.getTaskById(taskId)?.let { taskRepository.deleteTask(it) }
         }
+    }
+
+    /** 手动刷新（被 Screen 的 onResume 或外部调用触发） */
+    fun refresh() {
+        loadSchedule()
     }
 
     // ===== 工具方法 =====
