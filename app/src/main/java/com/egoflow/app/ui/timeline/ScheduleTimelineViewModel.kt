@@ -42,8 +42,6 @@ class ScheduleTimelineViewModel(
         loadSchedule()
     }
 
-    private var refreshTrigger = MutableSharedFlow<Unit>(replay = 1)
-
     private fun loadSchedule() {
         viewModelScope.launch {
             val today = Calendar.getInstance()
@@ -57,44 +55,33 @@ class ScheduleTimelineViewModel(
 
             _uiState.update { it.copy(selectedDate = dateStr, isLoading = true) }
 
-            // 使用 combine 组合两个 Flow，避免嵌套 collect 导致后续 emission 丢失
-            refreshTrigger.emit(Unit) // 确保初始触发
-            refreshTrigger
-                .flatMapLatest {
-                    combine(
-                        hardBlockRepository.getBlocksForDay(dayStart, dayEnd),
-                        taskRepository.getAllTasks()
-                    ) { hardBlocks, tasks ->
-                        Pair(hardBlocks, tasks)
-                    }
-                }
-                .collect { (hardBlocks, tasks) ->
-                    val poolTasks = tasks.filter { it.status == "POOL" }
-                    val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
+            // 使用 combine 直接组合两个 Room Flow
+            // Room Flow 在数据库变更时会自动重新发射，触发 timeline 刷新
+            combine(
+                hardBlockRepository.getBlocksForDay(dayStart, dayEnd),
+                taskRepository.getAllTasks()
+            ) { hardBlocks, tasks ->
+                Pair(hardBlocks, tasks)
+            }.collect { (hardBlocks, tasks) ->
+                val poolTasks = tasks.filter { it.status == "POOL" }
+                val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
 
-                    val plan = schedulingEngine.generateDailyPlan(
-                        tasks = poolTasks,
-                        hardBlocks = hardBlocks,
-                        completedMainLineMinutes = doneMainLineMinutes
+                val plan = schedulingEngine.generateDailyPlan(
+                    tasks = poolTasks,
+                    hardBlocks = hardBlocks,
+                    completedMainLineMinutes = doneMainLineMinutes
+                )
+
+                Log.d("TimelineVM", "Plan regenerated: ${plan.energyBlocks.size} blocks, ${plan.subLineTasks.size} subline tasks")
+                _uiState.update {
+                    it.copy(
+                        schedulePlan = plan,
+                        isLoading = false,
+                        swapTarget = null,
+                        swapErrorMessage = null
                     )
-
-                    Log.d("TimelineVM", "Plan regenerated: ${plan.energyBlocks.size} blocks, ${plan.subLineTasks.size} subline tasks")
-                    _uiState.update {
-                        it.copy(
-                            schedulePlan = plan,
-                            isLoading = false,
-                            swapTarget = null,
-                            swapErrorMessage = null
-                        )
-                    }
                 }
-        }
-    }
-
-    /** 外部手动触发刷新（例如 Chat 确认排程后调用） */
-    fun refresh() {
-        viewModelScope.launch {
-            refreshTrigger.emit(Unit)
+            }
         }
     }
 
@@ -120,7 +107,6 @@ class ScheduleTimelineViewModel(
         viewModelScope.launch {
             taskRepository.updateTaskStatus(source.taskId, "POOL")
             taskRepository.updateTaskStatus(block.taskId, "POOL")
-            refresh()
         }
     }
 
@@ -140,7 +126,6 @@ class ScheduleTimelineViewModel(
             val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
             existing.filter { it.id == block.taskId || it.subjectName == block.title }
                 .forEach { hardBlockRepository.deleteBlock(it) }
-            refresh()
         }
     }
 
@@ -203,7 +188,6 @@ class ScheduleTimelineViewModel(
             )
 
             _uiState.update { it.copy(editingBlock = null) }
-            refresh()
         }
     }
 
@@ -214,14 +198,12 @@ class ScheduleTimelineViewModel(
             val task = taskRepository.getTaskById(taskId) ?: return@launch
             val newStatus = if (task.status == "DONE") "POOL" else "DONE"
             taskRepository.updateTaskStatus(taskId, newStatus)
-            refresh()
         }
     }
 
     fun deleteSubLineTask(taskId: String) {
         viewModelScope.launch {
             taskRepository.getTaskById(taskId)?.let { taskRepository.deleteTask(it) }
-            refresh()
         }
     }
 

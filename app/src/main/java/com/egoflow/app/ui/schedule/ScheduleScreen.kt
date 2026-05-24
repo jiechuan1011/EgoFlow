@@ -72,7 +72,13 @@ fun ScheduleScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("课程表", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "课表",
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
