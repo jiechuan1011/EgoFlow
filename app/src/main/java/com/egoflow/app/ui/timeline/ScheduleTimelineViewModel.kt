@@ -44,43 +44,42 @@ class ScheduleTimelineViewModel(
 
     private fun loadSchedule() {
         viewModelScope.launch {
-            val today = Calendar.getInstance()
-            val dateStr = "%04d-%02d-%02d".format(
-                today.get(Calendar.YEAR),
-                today.get(Calendar.MONTH) + 1,
-                today.get(Calendar.DAY_OF_MONTH)
-            )
-            val dayStart = getDayStartMillis()
-            val dayEnd = dayStart + 24 * 3600_000L
-
-            _uiState.update { it.copy(selectedDate = dateStr, isLoading = true) }
-
-            // 使用 combine 直接组合两个 Room Flow
-            // Room Flow 在数据库变更时会自动重新发射，触发 timeline 刷新
-            combine(
-                hardBlockRepository.getBlocksForDay(dayStart, dayEnd),
-                taskRepository.getAllTasks()
-            ) { hardBlocks, tasks ->
-                Pair(hardBlocks, tasks)
-            }.collect { (hardBlocks, tasks) ->
-                val poolTasks = tasks.filter { it.status == "POOL" }
-                val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
-
-                val plan = schedulingEngine.generateDailyPlan(
-                    tasks = poolTasks,
-                    hardBlocks = hardBlocks,
-                    completedMainLineMinutes = doneMainLineMinutes
+            try {
+                val today = Calendar.getInstance()
+                val dateStr = "%04d-%02d-%02d".format(
+                    today.get(Calendar.YEAR),
+                    today.get(Calendar.MONTH) + 1,
+                    today.get(Calendar.DAY_OF_MONTH)
                 )
+                val dayStart = getDayStartMillis()
+                val dayEnd = dayStart + 24 * 3600_000L
 
-                Log.d("TimelineVM", "Plan regenerated: ${plan.energyBlocks.size} blocks, ${plan.subLineTasks.size} subline tasks")
-                _uiState.update {
-                    it.copy(
-                        schedulePlan = plan,
-                        isLoading = false,
-                        swapTarget = null,
-                        swapErrorMessage = null
-                    )
+                _uiState.update { it.copy(selectedDate = dateStr, isLoading = true) }
+
+                hardBlockRepository.getBlocksForDay(dayStart, dayEnd).collect { hardBlocks ->
+                    taskRepository.getAllTasks().collect { tasks ->
+                        val poolTasks = tasks.filter { it.status == "POOL" }
+                        val doneMainLineMinutes = taskRepository.getCompletedMainLineMinutesSince(dayStart)
+
+                        val plan = schedulingEngine.generateDailyPlan(
+                            tasks = poolTasks,
+                            hardBlocks = hardBlocks,
+                            completedMainLineMinutes = doneMainLineMinutes
+                        )
+
+                        _uiState.update {
+                            it.copy(
+                                schedulePlan = plan,
+                                isLoading = false,
+                                swapTarget = null,
+                                swapErrorMessage = null
+                            )
+                        }
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("TimelineVM", "loadSchedule failed", e)
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }

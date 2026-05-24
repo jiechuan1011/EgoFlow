@@ -65,7 +65,7 @@ fun ScheduleTimelineScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("日程时间线", fontWeight = FontWeight.Bold) },
+                title = { Text("时间线", fontWeight = FontWeight.Bold, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -160,7 +160,7 @@ fun ScheduleTimelineScreen(
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 visibleSubLineTasks.forEach { task ->
-                                    SwipeToDismissSubLineRow(
+                                    SubLineTaskRow(
                                         task = task,
                                         onToggle = { viewModel.toggleSubLineTask(task.id) },
                                         onDelete = { viewModel.deleteSubLineTask(task.id) }
@@ -325,47 +325,6 @@ private fun TimelineBlockCard(
                 )
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SwipeToDismissSubLineRow(
-    task: TaskEntity,
-    onToggle: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else false
-        }
-    )
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            // 左滑露出红色删除背景
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(HardBlockRed.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = HardBlockRed,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        },
-        enableDismissFromStartToEnd = false // 只允许左滑
-    ) {
-        SubLineTaskRow(task = task, onToggle = onToggle, onDelete = onDelete)
     }
 }
 
