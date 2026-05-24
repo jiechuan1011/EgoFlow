@@ -47,8 +47,11 @@ class EvolutionRepository(private val evolutionDao: EvolutionBacklogDao) {
 
     /** 将当前所有 PENDING 条目标记为 IMPLEMENTED */
     suspend fun markAllPendingAsImplemented() {
-        evolutionDao.getAll().first().filter { it.status == "PENDING" }.forEach {
-            evolutionDao.updateStatus(it.id, "IMPLEMENTED")
+        val allEntries = kotlinx.coroutines.flow.first(evolutionDao.getAll())
+        for (entry in allEntries) {
+            if (entry.status == "PENDING") {
+                evolutionDao.updateStatus(entry.id, "IMPLEMENTED")
+            }
         }
     }
 }
