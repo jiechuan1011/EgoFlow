@@ -1,0 +1,217 @@
+package com.egoflow.app.ui.schedule
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.egoflow.app.EgoFlowApp
+import com.egoflow.app.data.repository.ScheduleTemplateRepository
+import com.egoflow.app.data.repository.HardBlockRepository
+import com.egoflow.app.domain.model.RoutineTask
+import com.egoflow.app.domain.model.ScheduleTemplateItem
+import com.egoflow.app.util.IcsParser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Calendar
+
+data class ScheduleUiState(
+    val items: List<ScheduleTemplateItem> = emptyList(),
+    val showAddDialog: Boolean = false,
+    val saved: Boolean = false,
+    val importResult: String? = null,
+    val routineToggles: Map<String, Boolean> = RoutineTask.PRESETS.associate { it.id to true }
+)
+
+class ScheduleViewModel(
+    private val templateRepository: ScheduleTemplateRepository,
+    private val hardBlockRepository: HardBlockRepository
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(ScheduleUiState())
+    val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            templateRepository.templateItems.collect { items ->
+                _uiState.update { it.copy(items = items) }
+            }
+        }
+        viewModelScope.launch {
+            templateRepository.routineToggles.collect { toggles ->
+                _uiState.update { it.copy(routineToggles = toggles) }
+            }
+        }
+    }
+
+    fun showAddDialog() {
+        _uiState.update { it.copy(showAddDialog = true) }
+    }
+
+    fun hideAddDialog() {
+        _uiState.update { it.copy(showAddDialog = false) }
+    }
+
+    fun addItem(
+        subjectName: String,
+        dayOfWeek: Int,
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int
+    ) {
+        viewModelScope.launch {
+            templateRepository.addItem(
+                subjectName = subjectName,
+                dayOfWeek = dayOfWeek,
+                startHour = startHour,
+                startMinute = startMinute,
+                endHour = endHour,
+                endMinute = endMinute
+            )
+            _uiState.update { it.copy(showAddDialog = false, saved = true) }
+        }
+    }
+
+    fun removeItem(id: String) {
+        viewModelScope.launch {
+            templateRepository.removeItem(id)
+        }
+    }
+
+    /** 将模板生成为本周的 HardBlock（只取当周有效课程） */
+    fun generateThisWeek() {
+        viewModelScope.launch {
+            val items = templateRepository.getAllItems()
+            val today = Calendar.getInstance()
+            val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
+            val mondayOffset = when (dayOfWeek) {
+                Calendar.SUNDAY -> -6
+                Calendar.MONDAY -> 0
+                Calendar.TUESDAY -> -1
+                Calendar.WEDNESDAY -> -2
+                Calendar.THURSDAY -> -3
+                Calendar.FRIDAY -> -4
+                Calendar.SATURDAY -> -5
+                else -> 0
+            }
+            val monday = today.clone() as Calendar
+            monday.add(Calendar.DAY_OF_MONTH, mondayOffset)
+            monday.set(Calendar.HOUR_OF_DAY, 0)
+            monday.set(Calendar.MINUTE, 0)
+            monday.set(Calendar.SECOND, 0)
+            monday.set(Calendar.MILLISECOND, 0)
+
+            // 本周7天
+            for (d in 0..6) {
+                val day = monday.clone() as Calendar
+                day.add(Calendar.DAY_OF_MONTH, d)
+                val dayStart = day.timeInMillis
+                val dayEnd = dayStart + 86400_000
+
+                // 先删除当天的旧 hard blocks
+                val existing = hardBlockRepository.getBlocksForDaySync(dayStart, dayEnd)
+                existing.forEach { hardBlockRepository.deleteBlock(it) }
+
+                // 添加当天有效的课程（含单双周过滤）
+                val weekdayIndex = d + 1 // 1=周一
+                val activeCourses = items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }
+                val dateStr = "%04d-%02d-%02d".format(day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH))
+                Log.d("ScheduleVM", "[生成硬墙] $dateStr (周$weekdayIndex) → ${activeCourses.size}门课激活")
+                activeCourses.forEach { item ->
+                    Log.d("ScheduleVM", "  → ${item.subjectName} ${item.startHour}:%02d-${item.endHour}:%02d interval=${item.interval} validFrom=${item.validFrom}".format(item.startMinute, item.endMinute))
+                }
+                activeCourses.forEach { item ->
+                        val startCal = day.clone() as Calendar
+                        startCal.set(Calendar.HOUR_OF_DAY, item.startHour)
+                        startCal.set(Calendar.MINUTE, item.startMinute)
+                        val endCal = day.clone() as Calendar
+                        endCal.set(Calendar.HOUR_OF_DAY, item.endHour)
+                        endCal.set(Calendar.MINUTE, item.endMinute)
+                        hardBlockRepository.addBlock(subjectName = item.subjectName, startTime = startCal.timeInMillis, endTime = endCal.timeInMillis)
+                    }
+
+                // 添加当天启用的日常任务（标记为 ROUTINE，不覆盖课程）
+                val enabledRoutines = templateRepository.getEnabledRoutines()
+                val existingBlockTimes = mutableSetOf<Pair<Long, Long>>()
+                // 先收集已有 hard block 的时间区间，避免冲突
+                for (item in items.filter { it.dayOfWeek == weekdayIndex && it.isActiveForDay(dayStart) }) {
+                    val sc = day.clone() as Calendar; sc.set(Calendar.HOUR_OF_DAY, item.startHour); sc.set(Calendar.MINUTE, item.startMinute)
+                    val ec = day.clone() as Calendar; ec.set(Calendar.HOUR_OF_DAY, item.endHour); ec.set(Calendar.MINUTE, item.endMinute)
+                    existingBlockTimes.add(sc.timeInMillis to ec.timeInMillis)
+                }
+                for (rt in enabledRoutines) {
+                    if (rt.dayOfWeek != 0 && rt.dayOfWeek != weekdayIndex) continue
+                    val sc = day.clone() as Calendar; sc.set(Calendar.HOUR_OF_DAY, rt.startHour); sc.set(Calendar.MINUTE, rt.startMinute)
+                    val ec = day.clone() as Calendar; ec.set(Calendar.HOUR_OF_DAY, rt.startHour + (rt.durationMinutes / 60)); ec.set(Calendar.MINUTE, rt.startMinute + (rt.durationMinutes % 60))
+                    val blockRange = sc.timeInMillis to ec.timeInMillis
+                    // 不与课程冲突才插入
+                    if (existingBlockTimes.none { it.first < blockRange.second && it.second > blockRange.first }) {
+                        hardBlockRepository.addBlock(subjectName = "🔄 ${rt.name}", startTime = sc.timeInMillis, endTime = ec.timeInMillis)
+                        existingBlockTimes.add(blockRange)
+                    }
+                }
+            }
+            _uiState.update { it.copy(saved = true) }
+        }
+    }
+
+    /**
+     * 导入 ICS 文件内容，解析为课程表条目
+     */
+    fun importIcs(icsContent: String) {
+        viewModelScope.launch {
+            val items = withContext(Dispatchers.Default) {
+                IcsParser.parseToTemplateItems(icsContent)
+            }
+            if (items.isEmpty()) {
+                _uiState.update { it.copy(importResult = "未识别到课程事件，请检查 ICS 文件格式") }
+                return@launch
+            }
+            // 合并到现有条目
+            val current = templateRepository.getAllItems()
+            val merged = current + items
+            templateRepository.saveItems(merged)
+            _uiState.update {
+                it.copy(importResult = "成功导入 ${items.size} 个课程，去重后共 ${merged.size} 项")
+            }
+        }
+    }
+
+    fun setImportResult(msg: String) {
+        _uiState.update { it.copy(importResult = msg) }
+    }
+
+    fun clearImportResult() {
+        _uiState.update { it.copy(importResult = null) }
+    }
+
+    fun toggleRoutine(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            templateRepository.setRoutineToggle(id, enabled)
+        }
+    }
+
+    fun clearAll() {
+        viewModelScope.launch {
+            templateRepository.saveItems(emptyList())
+            _uiState.update { it.copy(saved = true, importResult = "已清空所有课程") }
+        }
+    }
+
+    fun clearSavedFlag() {
+        _uiState.update { it.copy(saved = false) }
+    }
+
+    class Factory : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            val app = EgoFlowApp.instance
+            return ScheduleViewModel(
+                templateRepository = app.scheduleTemplateRepository,
+                hardBlockRepository = app.hardBlockRepository
+            ) as T
+        }
+    }
+}

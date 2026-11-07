@@ -1,0 +1,30 @@
+# Android / Gradle
+*.iml
+.gradle
+/build
+/app/build
+/local.properties
+/captures
+.externalNativeBuild
+.cxx
+
+# IDE
+/.idea
+.DS_Store
+*.swp
+*.swo
+
+# 签名与密钥（⚠️ 绝不提交）
+keystore.properties
+egoflow_keystore.jks
+egoflow_keystore.jks.base64
+
+# 编译产物
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# 其他
+*.log
+*.tmp
